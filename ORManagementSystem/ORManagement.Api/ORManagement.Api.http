@@ -1,0 +1,16 @@
+@ORManagement.Api_HostAddress = http://localhost:5263
+
+GET {{ORManagement.Api_HostAddress}}/api/auth/test
+Accept: application/json
+
+###
+
+POST {{ORManagement.Api_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{
+	"username": "demo",
+	"password": "P@ssw0rd123"
+}
+
+###
