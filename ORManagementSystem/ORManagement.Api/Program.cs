@@ -11,6 +11,19 @@ using ORManagement.Infrastructure.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
 
+//Add Cors Policy
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("FrontendPolicy", policy =>
+    {
+        policy
+            .WithOrigins("http://localhost:5173") // Vue dev server
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials(); // REQUIRED for cookies
+    });
+});
+
 //Register Controllers
 builder.Services.AddControllers();
 
@@ -84,6 +97,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.UseCors("FrontendPolicy");
 
 app.UseAuthentication();
 app.UseAuthorization();

@@ -26,16 +26,6 @@ public class AuthController : ApiControllerBase
         _logger = logger;
     }
 
-    [HttpGet("test")]
-    public IActionResult Get()
-    {
-        var user = new
-        {
-            name = "Adithya",
-
-        };
-        return Ok(user);
-    }
     [HttpPost("register")]
     [AllowAnonymous]
     public async Task<IActionResult> Register([FromBody] RegisterRequestDto request)
