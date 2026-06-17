@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using ORManagement.Application.DTOs.Shared;
+using System.Security.Claims;
 
 namespace ORManagement.Api.Controllers;
 
@@ -23,6 +24,13 @@ public abstract class ApiControllerBase : ControllerBase
             "INVALID_REFRESH_TOKEN" => Unauthorized(Error(result)),
             "REFRESH_TOKEN_EXPIRED" => Unauthorized(Error(result)),
             "REFRESH_TOKEN_REVOKED" => Unauthorized(Error(result)),
+            "PATIENT_NOT_FOUND" => NotFound(Error(result)),
+            "ROOM_NOT_FOUND" => NotFound(Error(result)),
+            "ROOM_ALREADY_EXISTS" => Conflict(Error(result)),
+            "ROOM_UPDATE_FAILED" => BadRequest(Error(result)),
+            "ROOM_DELETE_FAILED" => BadRequest(Error(result)),
+            "INVALID_DATE_RANGE" => BadRequest(Error(result)),
+
             _ => BadRequest(Error(result))
         };
     }
@@ -46,6 +54,53 @@ public abstract class ApiControllerBase : ControllerBase
         };
     }
 
+    protected int? GetCurrentUserId()
+    {
+        var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (!int.TryParse(userIdValue, out var userId))
+        {
+            return null;
+        }
+
+        return userId;
+    }
+
+    protected int GetCurrentHospitalIdOrDefault()
+    {
+        var hospitalIdValue = User.FindFirstValue("hospitalId");
+
+        if (int.TryParse(hospitalIdValue, out var hospitalId))
+        {
+            return hospitalId;
+        }
+
+        return 1;
+    }
+
+    protected string GetCurrentRoleName()
+    {
+        return User.FindFirstValue(ClaimTypes.Role) ?? "Unknown";
+    }
+
+    protected string? GetIpAddress()
+    {
+        return HttpContext.Connection.RemoteIpAddress?.ToString();
+    }
+
+    protected string? GetUserAgent()
+    {
+        var userAgent = Request.Headers.UserAgent.ToString();
+
+        if (string.IsNullOrWhiteSpace(userAgent))
+        {
+            return null;
+        }
+
+        return userAgent.Length > 300
+            ? userAgent[..300]
+            : userAgent;
+    }
     private static object Error(ServiceResultDto result)
     {
         return new
