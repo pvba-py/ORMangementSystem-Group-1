@@ -24,15 +24,22 @@ public class CasesController : ApiControllerBase
     [Authorize(Roles = "ORScheduler")]
     public async Task<IActionResult> GetCases([FromQuery] string? status)
     {
+        var userId = GetCurrentUserId();
+
+
         var result = await _caseService.GetCasesAsync(
             GetCurrentHospitalIdOrDefault(),
-            status);
+            userId.Value,
+            GetCurrentRoleName(),
+            status,
+            GetIpAddress(),
+            GetUserAgent());
+
 
         if (!result.Success)
         {
             return MapError(result);
         }
-
         return Ok(result.Data);
     }
 
@@ -40,9 +47,10 @@ public class CasesController : ApiControllerBase
     [Authorize(Roles = "Surgeon")]
     public async Task<IActionResult> GetMyCases()
     {
+        var userId = GetCurrentUserId();
         var surgeonId = GetCurrentSurgeonId();
 
-        if (surgeonId is null)
+        if (userId is null || surgeonId is null)
         {
             return Unauthorized(new
             {
@@ -52,9 +60,15 @@ public class CasesController : ApiControllerBase
             });
         }
 
+
         var result = await _caseService.GetMyCasesAsync(
             GetCurrentHospitalIdOrDefault(),
-            surgeonId.Value);
+            surgeonId.Value,
+            userId.Value,
+            GetCurrentRoleName(),
+            GetIpAddress(),
+            GetUserAgent());
+
 
         if (!result.Success)
         {

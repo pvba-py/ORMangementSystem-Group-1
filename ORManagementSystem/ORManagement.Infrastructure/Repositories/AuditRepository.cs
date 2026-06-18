@@ -154,4 +154,26 @@ public class AuditRepository : IAuditRepository
             })
             .ToListAsync();
     }
+    public async Task AddPhiAccessLogsBulkAsync(List<CreatePhiAccessLogDto> requests)
+    {
+        if (requests.Count == 0)
+        {
+            return;
+        }
+
+        var logs = requests.Select(request => new PhiAccessLog
+        {
+            HospitalId = request.HospitalId,
+            UserId = request.UserId,
+            PatientId = request.PatientId,
+            AccessType = request.AccessType,
+            Context = request.Context,
+            IpAddress = request.IpAddress,
+            UserAgent = request.UserAgent,
+            AccessedAt = DateTime.UtcNow
+        }).ToList();
+
+        await _dbContext.PhiAccessLogs.AddRangeAsync(logs);
+        await _dbContext.SaveChangesAsync();
+    }
 }

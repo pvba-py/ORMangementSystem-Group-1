@@ -166,11 +166,11 @@ public class RequestRepository : IRequestRepository
     }
 
     public async Task<bool> UpdateRequestStatusAsync(
-        int hospitalId,
-        int requestId,
-        string status,
-        string? schedulerRemarks,
-        int modifiedByUserId)
+    int hospitalId,
+    int requestId,
+    string status,
+    string? schedulerRemarks,
+    int modifiedByUserId)
     {
         var entity = await _dbContext.ORRequests
             .FirstOrDefaultAsync(request =>
@@ -182,9 +182,22 @@ public class RequestRepository : IRequestRepository
             return false;
         }
 
+        var oldStatus = entity.RequestStatus;
+
         entity.RequestStatus = status;
         entity.SchedulerRemarks = schedulerRemarks;
         entity.ModifiedByUserId = modifiedByUserId;
+
+        if (oldStatus == "Waitlisted" && status != "Waitlisted")
+        {
+            var waitlist = await _dbContext.WaitlistRequests
+                .FirstOrDefaultAsync(waitlist => waitlist.RequestId == requestId);
+
+            if (waitlist is not null)
+            {
+                _dbContext.WaitlistRequests.Remove(waitlist);
+            }
+        }
 
         await _dbContext.SaveChangesAsync();
 
@@ -250,4 +263,20 @@ public class RequestRepository : IRequestRepository
                 patient.PatientId == patientId &&
                 patient.IsActive);
     }
+    public async Task<bool> RemoveFromWaitlistByRequestIdAsync(int requestId)
+    {
+        var waitlist = await _dbContext.WaitlistRequests
+            .FirstOrDefaultAsync(waitlist => waitlist.RequestId == requestId);
+
+        if (waitlist is null)
+        {
+            return true;
+        }
+
+        _dbContext.WaitlistRequests.Remove(waitlist);
+        await _dbContext.SaveChangesAsync();
+
+        return true;
+    }
+
 }

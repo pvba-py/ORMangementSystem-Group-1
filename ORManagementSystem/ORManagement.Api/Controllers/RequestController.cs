@@ -26,10 +26,28 @@ public class RequestsController : ApiControllerBase
         [FromQuery] string? status,
         [FromQuery] int? cycleId)
     {
+
+        var userId = GetCurrentUserId();
+
+        if (userId is null)
+        {
+            return Unauthorized(new
+            {
+                success = false,
+                errorCode = "INVALID_TOKEN",
+                message = "Invalid token."
+            });
+        }
+
         var result = await _requestService.GetRequestsAsync(
             GetCurrentHospitalIdOrDefault(),
+            userId.Value,
+            GetCurrentRoleName(),
             status,
-            cycleId);
+            cycleId,
+            GetIpAddress(),
+            GetUserAgent());
+
 
         if (!result.Success)
         {
@@ -43,21 +61,26 @@ public class RequestsController : ApiControllerBase
     [Authorize(Roles = "Surgeon")]
     public async Task<IActionResult> GetMyRequests()
     {
+        var userId = GetCurrentUserId();
         var surgeonId = GetCurrentSurgeonId();
 
-        if (surgeonId is null)
+        if (userId is null || surgeonId is null)
         {
             return Unauthorized(new
             {
                 success = false,
-                errorCode = "SURGEON_CLAIM_MISSING",
-                message = "Surgeon profile was not found in token."
+                errorCode = "INVALID_TOKEN",
+                message = "Invalid surgeon token."
             });
         }
 
         var result = await _requestService.GetMyRequestsAsync(
             GetCurrentHospitalIdOrDefault(),
-            surgeonId.Value);
+            surgeonId.Value,
+            userId.Value,
+            GetCurrentRoleName(),
+            GetIpAddress(),
+            GetUserAgent());
 
         if (!result.Success)
         {

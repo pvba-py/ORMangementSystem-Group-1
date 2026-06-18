@@ -5,9 +5,20 @@ namespace ORManagement.Application.Interfaces.Services;
 
 public interface ICaseService
 {
-    Task<ServiceResultDto<List<SurgicalCaseDto>>> GetCasesAsync(int hospitalId, string? status);
-    Task<ServiceResultDto<List<SurgicalCaseDto>>> GetMyCasesAsync(int hospitalId, int surgeonId);
-
+    Task<ServiceResultDto<List<SurgicalCaseDto>>> GetCasesAsync(
+        int hospitalId,
+        int userId,
+        string roleName,
+        string? status,
+        string? ipAddress,
+        string? userAgent);
+    Task<ServiceResultDto<List<SurgicalCaseDto>>> GetMyCasesAsync(
+        int hospitalId,
+        int surgeonId,
+        int userId,
+        string roleName,
+        string? ipAddress,
+        string? userAgent);
     Task<ServiceResultDto<SurgicalCaseDto>> GetCaseByIdAsync(
         int hospitalId,
         int surgeryId,

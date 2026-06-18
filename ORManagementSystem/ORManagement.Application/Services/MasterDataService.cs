@@ -54,21 +54,20 @@ public class MasterDataService : IMasterDataService
     {
         var patients = await _masterDataRepository.GetPatientsAsync(hospitalId, search);
 
-        foreach (var patient in patients)
+        var phiLogs = patients.Select(patient => new CreatePhiAccessLogDto
         {
-            await _auditRepository.AddPhiAccessLogAsync(new CreatePhiAccessLogDto
-            {
-                HospitalId = hospitalId,
-                UserId = userId,
-                PatientId = patient.PatientId,
-                AccessType = string.IsNullOrWhiteSpace(search) ? "View" : "Search",
-                Context = string.IsNullOrWhiteSpace(search)
-                    ? "Patient list viewed"
-                    : $"Patient search performed. Search term: {search}",
-                IpAddress = ipAddress,
-                UserAgent = userAgent
-            });
-        }
+            HospitalId = hospitalId,
+            UserId = userId,
+            PatientId = patient.PatientId,
+            AccessType = string.IsNullOrWhiteSpace(search) ? "View" : "Search",
+            Context = string.IsNullOrWhiteSpace(search)
+        ? "Patient list viewed"
+        : $"Patient search performed. Search term: {search}",
+            IpAddress = ipAddress,
+            UserAgent = userAgent
+        }).ToList();
+
+        await _auditRepository.AddPhiAccessLogsBulkAsync(phiLogs);
 
         _logger.LogInformation(
             "Patient list accessed by UserId {UserId}. Count: {Count}",

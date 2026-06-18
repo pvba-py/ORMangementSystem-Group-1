@@ -83,6 +83,7 @@ public abstract class ApiControllerBase : ControllerBase
             "INVALID_FORECAST_STATUS" => BadRequest(Error(result)),
             "FORECAST_RECOMMENDATION_NOT_FOUND" => NotFound(Error(result)),
             "FORECAST_STATUS_UPDATE_FAILED" => BadRequest(Error(result)),
+            "CASE_OUTSIDE_BLOCK" => BadRequest(Error(result)),
             _ => BadRequest(Error(result))
         };
     }

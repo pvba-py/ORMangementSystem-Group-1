@@ -1,28 +1,32 @@
-﻿using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Security.Cryptography;
-using System.Text;
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
+using ORManagement.Application.DTOs.Audit;
 using ORManagement.Application.DTOs.Auth;
 using ORManagement.Application.DTOs.Shared;
 using ORManagement.Application.Interfaces.Repositories;
 using ORManagement.Application.Interfaces.Services;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace ORManagement.Application.Services;
 
 public class AuthService : IAuthService
 {
+    private readonly IAuditRepository _auditRepository;
     private readonly IAuthRepository _authRepository;
     private readonly IConfiguration _configuration;
     private readonly ILogger<AuthService> _logger;
 
     public AuthService(
+        IAuditRepository auditRepository,
         IAuthRepository authRepository,
         IConfiguration configuration,
         ILogger<AuthService> logger)
     {
+        _auditRepository = auditRepository;
         _authRepository = authRepository;
         _configuration = configuration;
         _logger = logger;
@@ -87,6 +91,36 @@ public class AuthService : IAuthService
         {
             return AuthResultDto.Fail("REGISTRATION_FAILED", "User was created but profile could not be loaded.");
         }
+        await _auditRepository.AddAuditLogAsync(new CreateAuditLogDto
+        {
+            HospitalId = createdUser.HospitalId,
+            UserId = createdUser.UserId,
+            RoleName = createdUser.RoleName,
+            Action = "UserRegistered",
+            Entity = "Users",
+            EntityId = createdUser.UserId,
+            NewValue = $"{createdUser.Username}|{createdUser.RoleName}",
+            Remarks = "New user registered.",
+            IpAddress = ipAddress,
+            UserAgent = userAgent
+        });
+
+        if (createdUser.RoleName == "Surgeon" && createdUser.SurgeonId.HasValue)
+        {
+            await _auditRepository.AddAuditLogAsync(new CreateAuditLogDto
+            {
+                HospitalId = createdUser.HospitalId,
+                UserId = createdUser.UserId,
+                RoleName = createdUser.RoleName,
+                Action = "SurgeonProfileCreated",
+                Entity = "Surgeons",
+                EntityId = createdUser.SurgeonId.Value,
+                NewValue = createdUser.FullName,
+                Remarks = "Surgeon profile created during registration.",
+                IpAddress = ipAddress,
+                UserAgent = userAgent
+            });
+        }
 
         var accessToken = GenerateAccessToken(createdUser);
         var refreshToken = GenerateRefreshToken();
@@ -106,24 +140,59 @@ public class AuthService : IAuthService
     }
 
     public async Task<AuthResultDto> LoginAsync(
-        LoginRequestDto request,
-        string? ipAddress,
-        string? userAgent)
+    LoginRequestDto request,
+    string? ipAddress,
+    string? userAgent)
     {
         _logger.LogInformation("Login attempt for username {Username}", request.Username);
 
-        var user = await _authRepository.GetUserAuthByUsernameAsync(request.Username.Trim());
+        var username = request.Username.Trim();
+
+        var user = await _authRepository.GetUserAuthByUsernameAsync(username);
 
         if (user is null)
         {
-            _logger.LogWarning("Login failed. Username not found: {Username}", request.Username);
+            await _auditRepository.AddAuditLogAsync(new CreateAuditLogDto
+            {
+                HospitalId = null,
+                UserId = null,
+                RoleName = "Unknown",
+                Action = "LoginFailed",
+                Entity = "Auth",
+                EntityId = null,
+                OldValue = null,
+                NewValue = null,
+                Remarks = $"Login failed. Username not found: {username}",
+                IpAddress = ipAddress,
+                UserAgent = userAgent
+            });
+
+            _logger.LogWarning("Login failed. Username not found: {Username}", username);
+
             return AuthResultDto.Fail("INVALID_CREDENTIALS", "Invalid username or password.");
         }
 
         var isPasswordValid = BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash);
+
         if (!isPasswordValid)
         {
-            _logger.LogWarning("Login failed. Invalid password for username {Username}", request.Username);
+            await _auditRepository.AddAuditLogAsync(new CreateAuditLogDto
+            {
+                HospitalId = user.HospitalId,
+                UserId = user.UserId,
+                RoleName = user.RoleName,
+                Action = "LoginFailed",
+                Entity = "Auth",
+                EntityId = user.UserId,
+                OldValue = null,
+                NewValue = null,
+                Remarks = $"Login failed. Invalid password for username: {username}",
+                IpAddress = ipAddress,
+                UserAgent = userAgent
+            });
+
+            _logger.LogWarning("Login failed. Invalid password for username {Username}", username);
+
             return AuthResultDto.Fail("INVALID_CREDENTIALS", "Invalid username or password.");
         }
 
@@ -141,7 +210,25 @@ public class AuthService : IAuthService
             ipAddress,
             userAgent);
 
-        _logger.LogInformation("Login successful. UserId: {UserId}, Role: {RoleName}", user.UserId, user.RoleName);
+        await _auditRepository.AddAuditLogAsync(new CreateAuditLogDto
+        {
+            HospitalId = authUser.HospitalId,
+            UserId = authUser.UserId,
+            RoleName = authUser.RoleName,
+            Action = "LoginSuccess",
+            Entity = "Auth",
+            EntityId = authUser.UserId,
+            OldValue = null,
+            NewValue = "Authenticated",
+            Remarks = "User logged in successfully.",
+            IpAddress = ipAddress,
+            UserAgent = userAgent
+        });
+
+        _logger.LogInformation(
+            "Login successful. UserId: {UserId}, Role: {RoleName}",
+            user.UserId,
+            user.RoleName);
 
         return AuthResultDto.Ok(accessToken, refreshToken, authUser, "Login successful.");
     }
@@ -206,19 +293,48 @@ public class AuthService : IAuthService
     }
 
     public async Task<ServiceResultDto> LogoutAsync(
-        string? refreshToken,
-        int? userId,
-        string? ipAddress)
+     string? refreshToken,
+     int? userId,
+     string? ipAddress,
+     string? userAgent)
     {
+        AuthUserDto? currentUser = null;
+
+        if (userId.HasValue)
+        {
+            currentUser = await _authRepository.GetUserProfileByIdAsync(userId.Value);
+        }
+
         if (!string.IsNullOrWhiteSpace(refreshToken))
         {
             var tokenHash = HashToken(refreshToken);
-            await _authRepository.RevokeRefreshTokenAsync(tokenHash, null, ipAddress);
+
+            await _authRepository.RevokeRefreshTokenAsync(
+                tokenHash,
+                null,
+                ipAddress);
         }
         else if (userId.HasValue)
         {
-            await _authRepository.RevokeAllRefreshTokensForUserAsync(userId.Value, ipAddress);
+            await _authRepository.RevokeAllRefreshTokensForUserAsync(
+                userId.Value,
+                ipAddress);
         }
+
+        await _auditRepository.AddAuditLogAsync(new CreateAuditLogDto
+        {
+            HospitalId = currentUser?.HospitalId,
+            UserId = userId,
+            RoleName = currentUser?.RoleName ?? "Unknown",
+            Action = "LogoutCompleted",
+            Entity = "Auth",
+            EntityId = userId,
+            OldValue = "Authenticated",
+            NewValue = "LoggedOut",
+            Remarks = "User logged out successfully.",
+            IpAddress = ipAddress,
+            UserAgent = userAgent
+        });
 
         _logger.LogInformation("Logout completed for UserId {UserId}", userId);
 

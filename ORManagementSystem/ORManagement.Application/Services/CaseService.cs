@@ -5,6 +5,7 @@ using ORManagement.Application.DTOs.Shared;
 using ORManagement.Application.Engines;
 using ORManagement.Application.Interfaces.Repositories;
 using ORManagement.Application.Interfaces.Services;
+using System.Net;
 
 namespace ORManagement.Application.Services;
 
@@ -41,17 +42,59 @@ public class CaseService : ICaseService
         _logger = logger;
     }
 
-    public async Task<ServiceResultDto<List<SurgicalCaseDto>>> GetCasesAsync(int hospitalId, string? status)
+    public async Task<ServiceResultDto<List<SurgicalCaseDto>>> GetCasesAsync(
+    int hospitalId,
+    int userId,
+    string roleName,
+    string? status,
+    string? ipAddress,
+    string? userAgent)
     {
         var cases = await _caseRepository.GetCasesAsync(hospitalId, status);
+        var phiLogs = cases
+    .Select(surgicalCase => surgicalCase.PatientId)
+    .Distinct()
+    .Select(patientId => new CreatePhiAccessLogDto
+    {
+        HospitalId = hospitalId,
+        UserId = userId,
+        PatientId = patientId,
+        AccessType = "View",
+        Context = "Surgical case list viewed.",
+        IpAddress = ipAddress,
+        UserAgent = userAgent
+    })
+    .ToList();
 
+        await _auditRepository.AddPhiAccessLogsBulkAsync(phiLogs);
         return ServiceResultDto<List<SurgicalCaseDto>>.Ok(cases);
     }
 
-    public async Task<ServiceResultDto<List<SurgicalCaseDto>>> GetMyCasesAsync(int hospitalId, int surgeonId)
+    public async Task<ServiceResultDto<List<SurgicalCaseDto>>> GetMyCasesAsync(
+    int hospitalId,
+    int surgeonId,
+    int userId,
+    string roleName,
+    string? ipAddress,
+    string? userAgent)
     {
         var cases = await _caseRepository.GetMyCasesAsync(hospitalId, surgeonId);
+        var phiLogs = cases
+    .Select(surgicalCase => surgicalCase.PatientId)
+    .Distinct()
+    .Select(patientId => new CreatePhiAccessLogDto
+    {
+        HospitalId = hospitalId,
+        UserId = userId,
+        PatientId = patientId,
+        AccessType = "View",
+        Context = "My surgical cases viewed.",
+        IpAddress = ipAddress,
+        UserAgent = userAgent
+    })
+    .ToList();
 
+        await _auditRepository.AddPhiAccessLogsBulkAsync(phiLogs);
         return ServiceResultDto<List<SurgicalCaseDto>>.Ok(cases);
     }
 
@@ -125,6 +168,28 @@ public class CaseService : ICaseService
         {
             return ServiceResultDto<int>.Fail("INVALID_BLOCK", "Selected block is invalid for this request.");
         }
+        var blockBoundary = await _caseRepository.GetBlockBoundaryAsync(
+    hospitalId,
+    request.BlockId);
+
+        if (blockBoundary is null)
+        {
+            return ServiceResultDto<int>.Fail(
+                "INVALID_BLOCK",
+                "Selected block was not found.");
+        }
+
+        var boundaryValidation = ValidateCaseWithinBlock(
+            blockBoundary,
+            request.ScheduledStart,
+            request.ScheduledEnd);
+
+        if (!boundaryValidation.Success)
+        {
+            return ServiceResultDto<int>.Fail(
+                boundaryValidation.ErrorCode!,
+                boundaryValidation.Message!);
+        }
 
         var conflictExists = await _caseRepository.HasCaseConflictAsync(
             hospitalId,
@@ -176,24 +241,70 @@ public class CaseService : ICaseService
     }
 
     public async Task<ServiceResultDto> UpdateCaseAsync(
-        int hospitalId,
-        int surgeryId,
-        int userId,
-        string roleName,
-        UpdateCaseRequestDto request,
-        string? ipAddress,
-        string? userAgent)
+    int hospitalId,
+    int surgeryId,
+    int userId,
+    string roleName,
+    UpdateCaseRequestDto request,
+    string? ipAddress,
+    string? userAgent)
     {
         if (request.ScheduledEnd <= request.ScheduledStart)
         {
-            return ServiceResultDto.Fail("INVALID_CASE_TIME", "Scheduled end must be after scheduled start.");
+            return ServiceResultDto.Fail(
+                "INVALID_CASE_TIME",
+                "Scheduled end must be after scheduled start.");
         }
 
-        var existingCase = await _caseRepository.GetCaseByIdAsync(hospitalId, surgeryId);
+        var existingCase = await _caseRepository.GetCaseByIdAsync(
+            hospitalId,
+            surgeryId);
 
         if (existingCase is null)
         {
-            return ServiceResultDto.Fail("CASE_NOT_FOUND", "Surgical case was not found.");
+            return ServiceResultDto.Fail(
+                "CASE_NOT_FOUND",
+                "Surgical case was not found.");
+        }
+        var blockBoundary = await _caseRepository.GetBlockBoundaryAsync(
+    hospitalId,
+    existingCase.BlockId);
+
+        if (blockBoundary is null)
+        {
+            return ServiceResultDto.Fail(
+                "INVALID_BLOCK",
+                "Selected block was not found.");
+        }
+
+        var boundaryValidation = ValidateCaseWithinBlock(
+            blockBoundary,
+            request.ScheduledStart,
+            request.ScheduledEnd);
+
+        if (!boundaryValidation.Success)
+        {
+            return boundaryValidation;
+        }
+
+        var orRequest = await _caseRepository.GetRequestForSchedulingAsync(
+            hospitalId,
+            existingCase.RequestId);
+
+        if (orRequest is null)
+        {
+            return ServiceResultDto.Fail(
+                "REQUEST_NOT_FOUND",
+                "Related OR request was not found.");
+        }
+
+        if (!_availabilityWindowEngine.IsDateAllowed(
+                request.ScheduledStart.Date,
+                orRequest.AvailableDaysMask))
+        {
+            return ServiceResultDto.Fail(
+                "DATE_OUTSIDE_AVAILABILITY",
+                "Scheduled date is outside surgeon availability.");
         }
 
         var conflictExists = await _caseRepository.HasCaseConflictAsync(
@@ -205,7 +316,9 @@ public class CaseService : ICaseService
 
         if (conflictExists)
         {
-            return ServiceResultDto.Fail("CASE_CONFLICT", "Updated time conflicts with another surgical case.");
+            return ServiceResultDto.Fail(
+                "CASE_CONFLICT",
+                "Updated time conflicts with another surgical case.");
         }
 
         var updated = await _caseRepository.UpdateCaseAsync(
@@ -217,7 +330,9 @@ public class CaseService : ICaseService
 
         if (!updated)
         {
-            return ServiceResultDto.Fail("CASE_UPDATE_FAILED", "Only scheduled cases can be updated.");
+            return ServiceResultDto.Fail(
+                "CASE_UPDATE_FAILED",
+                "Only scheduled cases can be updated.");
         }
 
         await _auditRepository.AddAuditLogAsync(new CreateAuditLogDto
@@ -335,4 +450,37 @@ public class CaseService : ICaseService
 
         return ServiceResultDto.Ok();
     }
+    private static ServiceResultDto ValidateCaseWithinBlock(
+    BlockBoundaryDto block,
+    DateTime scheduledStart,
+    DateTime scheduledEnd)
+    {
+        if (scheduledEnd <= scheduledStart)
+        {
+            return ServiceResultDto.Fail(
+                "INVALID_CASE_TIME",
+                "Scheduled end must be after scheduled start.");
+        }
+
+        if (scheduledStart.Date != block.BlockDate.Date ||
+            scheduledEnd.Date != block.BlockDate.Date)
+        {
+            return ServiceResultDto.Fail(
+                "CASE_OUTSIDE_BLOCK",
+                "Scheduled case date must match the selected block date.");
+        }
+
+        var scheduledStartTime = TimeOnly.FromDateTime(scheduledStart);
+        var scheduledEndTime = TimeOnly.FromDateTime(scheduledEnd);
+
+        if (scheduledStartTime < block.StartTime || scheduledEndTime > block.EndTime)
+        {
+            return ServiceResultDto.Fail(
+                "CASE_OUTSIDE_BLOCK",
+                "Scheduled case time must be within the selected block time.");
+        }
+
+        return ServiceResultDto.Ok();
+    }
+
 }

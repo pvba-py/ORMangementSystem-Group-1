@@ -305,4 +305,23 @@ public class CaseRepository : ICaseRepository
             "EXEC analytics.usp_CalculateBlockUtilization @BlockId",
             new SqlParameter("@BlockId", blockId));
     }
+    public async Task<BlockBoundaryDto?> GetBlockBoundaryAsync(int hospitalId, int blockId)
+    {
+        return await _dbContext.BlockAllocations
+            .Where(block =>
+                block.HospitalId == hospitalId &&
+                block.BlockId == blockId)
+            .Select(block => new BlockBoundaryDto
+            {
+                BlockId = block.BlockId,
+                HospitalId = block.HospitalId,
+                SurgeonId = block.SurgeonId,
+                ORRoomId = block.ORRoomId,
+                BlockDate = block.BlockDate.ToDateTime(TimeOnly.MinValue),
+                StartTime = block.StartTime,
+                EndTime = block.EndTime,
+                BlockStatus = block.BlockStatus
+            })
+            .FirstOrDefaultAsync();
+    }
 }

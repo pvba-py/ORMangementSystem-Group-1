@@ -133,7 +133,8 @@ public class AuthController : ApiControllerBase
         var result = await _authService.LogoutAsync(
             refreshToken,
             userId,
-            GetIpAddress());
+            GetIpAddress(),
+            Request.Headers.UserAgent.ToString());
 
         ClearAuthCookies();
 

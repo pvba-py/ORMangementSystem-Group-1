@@ -6,13 +6,22 @@ namespace ORManagement.Application.Interfaces.Services;
 public interface IRequestService
 {
     Task<ServiceResultDto<List<OrRequestResponseDto>>> GetRequestsAsync(
-        int hospitalId,
-        string? status,
-        int? cycleId);
+    int hospitalId,
+    int userId,
+    string roleName,
+    string? status,
+    int? cycleId,
+    string? ipAddress,
+    string? userAgent);
 
     Task<ServiceResultDto<List<OrRequestResponseDto>>> GetMyRequestsAsync(
-        int hospitalId,
-        int surgeonId);
+    int hospitalId,
+    int surgeonId,
+    int userId,
+    string roleName,
+    string? ipAddress,
+    string? userAgent);
+
 
     Task<ServiceResultDto<OrRequestResponseDto>> GetRequestByIdAsync(
         int hospitalId,

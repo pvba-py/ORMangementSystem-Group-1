@@ -20,4 +20,6 @@ public interface IAuditRepository
         int? userId,
         DateTime? fromDate,
         DateTime? toDate);
+
+    Task AddPhiAccessLogsBulkAsync(List<CreatePhiAccessLogDto> requests);
 }
