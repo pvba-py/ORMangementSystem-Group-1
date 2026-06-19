@@ -201,7 +201,7 @@ public class AuthController : ApiControllerBase
         {
             HttpOnly = true,
             Secure = useSecureCookies,
-            SameSite = SameSiteMode.Strict,
+            SameSite = SameSiteMode.None,
             Expires = DateTimeOffset.UtcNow.AddMinutes(
                 Convert.ToInt32(_configuration["Jwt:AccessTokenExpiresInMinutes"] ?? "15"))
         });
@@ -210,7 +210,7 @@ public class AuthController : ApiControllerBase
         {
             HttpOnly = true,
             Secure = useSecureCookies,
-            SameSite = SameSiteMode.Strict,
+            SameSite = SameSiteMode.None,
             Expires = DateTimeOffset.UtcNow.AddDays(
                 Convert.ToInt32(_configuration["Jwt:RefreshTokenExpiresInDays"] ?? "7"))
         });

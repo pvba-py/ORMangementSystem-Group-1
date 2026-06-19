@@ -20,7 +20,6 @@
 
   <ItemGroup>
     <Folder Include="Data\Entities\" />
-    <Folder Include="Interceptors\" />
   </ItemGroup>
 
   <PropertyGroup>

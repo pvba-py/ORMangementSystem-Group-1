@@ -29,7 +29,7 @@ public interface ICaseRepository
         DateTime scheduledStart,
         DateTime scheduledEnd,
         int modifiedByUserId);
-
+    Task<BlockBoundaryDto?> GetBlockBoundaryAsync(int hospitalId, int blockId);
     Task<bool> UpdateCaseStatusAsync(
         int hospitalId,
         int surgeryId,

@@ -172,6 +172,7 @@ public class RequestsController : ApiControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Roles = "Surgeon")]
     public async Task<IActionResult> UpdateRequest(int id, [FromBody] UpdateOrRequestDto request)
     {
         if (!ModelState.IsValid)
@@ -219,6 +220,7 @@ public class RequestsController : ApiControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize(Roles = "Surgeon")]
     public async Task<IActionResult> DeleteRequest(int id)
     {
         var userId = GetCurrentUserId();

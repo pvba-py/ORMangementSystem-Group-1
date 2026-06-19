@@ -39,7 +39,7 @@ public interface IRequestRepository
         int hospitalId,
         int requestId,
         int userId);
-
+    Task<bool> RemoveFromWaitlistByRequestIdAsync(int requestId);
     Task<bool> AddToWaitlistIfNotExistsAsync(int requestId);
 
     Task<bool> PatientExistsAsync(int hospitalId, int patientId);

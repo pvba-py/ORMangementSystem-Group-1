@@ -1,17 +1,17 @@
-<script setup lang="ts">
+<script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { login } from '../services/authService'
-import { showToast } from '../utils/toast'
+import { useAuthStore } from '../../stores/authStore'
+import { showToast } from '../../utils/toast'
 
 const router = useRouter()
+const authStore = useAuthStore()
 
 const username = ref('')
 const password = ref('')
 const error = ref('')
 const loading = ref(false)
 
-// validation
 const validateLogin = () => {
   error.value = ''
 
@@ -19,7 +19,7 @@ const validateLogin = () => {
   const passwordValue = password.value.trim()
 
   if (!usernameValue || !passwordValue) {
-    error.value = 'Username and Password are required.'
+    error.value = 'Username and password are required.'
     return false
   }
 
@@ -36,31 +36,42 @@ const validateLogin = () => {
   return true
 }
 
-// login handler
 const handleLogin = async () => {
-  if (!validateLogin()) return
+  if (!validateLogin()) {
+    showToast(error.value, 'error')
+    return
+  }
 
   loading.value = true
 
   try {
     error.value = ''
 
-    // call API (cookies are automatically stored)
-    await login({
+    await authStore.login({
       username: username.value.trim(),
       password: password.value.trim()
     })
 
-    // no localStorage needed (cookies handle auth)
-    showToast('Login successful', 'success')
+    if (authStore.user?.roleName === 'Surgeon') {
+      showToast('Login successful', 'success')
+      router.push('/app/surgeon/dashboard')
+      return
+    }
 
-    router.push('/dashboard')
-  } catch (err: any) {
+    if (authStore.user?.roleName === 'ORScheduler') {
+      showToast('Login successful', 'success')
+      router.push('/app/scheduler/dashboard')
+      return
+    }
+
+    error.value = 'Login succeeded, but user role could not be loaded. Please contact administrator.'
+    showToast(error.value, 'error')
+  } catch (err) {
     error.value =
       err?.response?.data?.message ||
+      err?.response?.data?.title ||
       'Login failed. Please try again.'
 
-    // interceptor already shows toast, optional here
     showToast(error.value, 'error')
   } finally {
     loading.value = false
@@ -70,66 +81,73 @@ const handleLogin = async () => {
 
 <template>
   <div class="navbar-custom text-center">
-    <h1 style="margin: 0;">OR Management System</h1>
+    <h1 class="m-0">OR Management System</h1>
   </div>
 
   <div class="auth-wrapper">
     <div class="auth-card">
-
       <h4 class="auth-title">Login</h4>
 
-      <!-- Username -->
       <div class="input-group mb-3">
         <span class="input-group-text">
           <i class="bi bi-person"></i>
         </span>
 
         <input
-          required
           v-model="username"
           class="form-control"
           placeholder="Username"
+          autocomplete="username"
+          @keyup.enter="handleLogin"
         />
       </div>
 
-      <!-- Password -->
       <div class="input-group mb-3">
         <span class="input-group-text">
           <i class="bi bi-lock"></i>
         </span>
 
         <input
-          required
           v-model="password"
           type="password"
           class="form-control"
           placeholder="Password"
+          autocomplete="current-password"
+          @keyup.enter="handleLogin"
         />
       </div>
 
-      <!-- Error -->
-      <p v-if="error" class="text-danger">{{ error }}</p>
+      <p v-if="error" class="text-danger small">
+        {{ error }}
+      </p>
 
-      <!-- Button -->
       <button
         class="btn btn-primary auth-btn w-100"
         :disabled="loading"
         @click="handleLogin"
       >
+        <span
+          v-if="loading"
+          class="spinner-border spinner-border-sm me-2"
+        ></span>
         {{ loading ? 'Logging in...' : 'Login' }}
       </button>
 
-      <!-- Redirect -->
-      <p class="text-center mt-3">
+      <p class="text-center mt-3 mb-0">
         New user?
         <router-link to="/register">Register</router-link>
       </p>
-
     </div>
   </div>
 </template>
 
 <style scoped>
+.navbar-custom {
+  background: #111827;
+  color: white;
+  padding: 18px;
+}
+
 .input-group-text,
 .form-control {
   height: 45px;
@@ -142,15 +160,19 @@ const handleLogin = async () => {
 }
 
 .auth-card {
-  width: 350px;
+  width: 380px;
   padding: 25px;
-  border-radius: 8px;
+  border-radius: 12px;
   background: white;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
 }
 
 .auth-title {
   text-align: center;
   margin-bottom: 20px;
+}
+
+.auth-btn {
+  height: 45px;
 }
 </style>
