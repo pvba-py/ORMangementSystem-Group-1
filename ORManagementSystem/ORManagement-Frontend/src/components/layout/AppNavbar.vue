@@ -9,10 +9,12 @@ const authStore = useAuthStore()
 const handleLogout = async () => {
   try {
     await authStore.logout()
-    showToast.success('Logged out successfully')
-    router.push('/')
+
+    showToast('Logged out successfully', 'success')
+
+    router.replace('/')
   } catch {
-    showToast.error('Logout failed')
+    showToast('Logout failed', 'error')
   }
 }
 </script>
