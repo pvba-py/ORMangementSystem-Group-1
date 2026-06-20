@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using ORManagement.Application.DTOs.Audit;
+using ORManagement.Application.DTOs.Shared;
 using ORManagement.Application.Interfaces.Repositories;
 using ORManagement.Infrastructure.Data;
 using ORManagement.Infrastructure.Data.Entities;
@@ -55,13 +56,17 @@ public class AuditRepository : IAuditRepository
         await _dbContext.SaveChangesAsync();
     }
 
-    public async Task<List<AuditLogDto>> GetAuditLogsAsync(
-        int hospitalId,
-        string? entity,
-        string? action,
-        DateTime? fromDate,
-        DateTime? toDate)
+    public async Task<PagedResultDto<AuditLogDto>> GetAuditLogsAsync(
+    int hospitalId,
+    string? entity,
+    string? action,
+    DateTime? fromDate,
+    DateTime? toDate,
+    int pageNumber,
+    int pageSize)
     {
+        (pageNumber, pageSize) = NormalizePaging(pageNumber, pageSize);
+
         var query = _dbContext.AuditLogs
             .Where(log => log.HospitalId == hospitalId);
 
@@ -86,8 +91,12 @@ public class AuditRepository : IAuditRepository
             query = query.Where(log => log.CreatedAt < toExclusive);
         }
 
-        return await query
+        var totalCount = await query.CountAsync();
+
+        var items = await query
             .OrderByDescending(log => log.CreatedAt)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
             .Select(log => new AuditLogDto
             {
                 AuditId = log.AuditId,
@@ -105,15 +114,27 @@ public class AuditRepository : IAuditRepository
                 CreatedAt = log.CreatedAt
             })
             .ToListAsync();
+
+        return new PagedResultDto<AuditLogDto>
+        {
+            Items = items,
+            PageNumber = pageNumber,
+            PageSize = pageSize,
+            TotalCount = totalCount
+        };
     }
 
-    public async Task<List<PhiAccessLogDto>> GetPhiAccessLogsAsync(
-        int hospitalId,
-        int? patientId,
-        int? userId,
-        DateTime? fromDate,
-        DateTime? toDate)
+    public async Task<PagedResultDto<PhiAccessLogDto>> GetPhiAccessLogsAsync(
+    int hospitalId,
+    int? patientId,
+    int? userId,
+    DateTime? fromDate,
+    DateTime? toDate,
+    int pageNumber,
+    int pageSize)
     {
+        (pageNumber, pageSize) = NormalizePaging(pageNumber, pageSize);
+
         var query = _dbContext.PhiAccessLogs
             .Where(log => log.HospitalId == hospitalId);
 
@@ -138,8 +159,12 @@ public class AuditRepository : IAuditRepository
             query = query.Where(log => log.AccessedAt < toExclusive);
         }
 
-        return await query
+        var totalCount = await query.CountAsync();
+
+        var items = await query
             .OrderByDescending(log => log.AccessedAt)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
             .Select(log => new PhiAccessLogDto
             {
                 AccessId = log.AccessId,
@@ -153,6 +178,14 @@ public class AuditRepository : IAuditRepository
                 AccessedAt = log.AccessedAt
             })
             .ToListAsync();
+
+        return new PagedResultDto<PhiAccessLogDto>
+        {
+            Items = items,
+            PageNumber = pageNumber,
+            PageSize = pageSize,
+            TotalCount = totalCount
+        };
     }
     public async Task AddPhiAccessLogsBulkAsync(List<CreatePhiAccessLogDto> requests)
     {
@@ -175,5 +208,26 @@ public class AuditRepository : IAuditRepository
 
         await _dbContext.PhiAccessLogs.AddRangeAsync(logs);
         await _dbContext.SaveChangesAsync();
+    }
+    private static (int pageNumber, int pageSize) NormalizePaging(
+    int pageNumber,
+    int pageSize)
+    {
+        if (pageNumber <= 0)
+        {
+            pageNumber = 1;
+        }
+
+        if (pageSize <= 0)
+        {
+            pageSize = 20;
+        }
+
+        if (pageSize > 100)
+        {
+            pageSize = 100;
+        }
+
+        return (pageNumber, pageSize);
     }
 }

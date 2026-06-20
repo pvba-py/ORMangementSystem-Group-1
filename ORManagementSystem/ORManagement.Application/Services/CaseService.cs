@@ -51,22 +51,20 @@ public class CaseService : ICaseService
     string? userAgent)
     {
         var cases = await _caseRepository.GetCasesAsync(hospitalId, status);
-        var phiLogs = cases
-    .Select(surgicalCase => surgicalCase.PatientId)
-    .Distinct()
-    .Select(patientId => new CreatePhiAccessLogDto
-    {
-        HospitalId = hospitalId,
-        UserId = userId,
-        PatientId = patientId,
-        AccessType = "View",
-        Context = "Surgical case list viewed.",
-        IpAddress = ipAddress,
-        UserAgent = userAgent
-    })
-    .ToList();
+        await _auditRepository.AddAuditLogAsync(new CreateAuditLogDto
+        {
+            HospitalId = hospitalId,
+            UserId = userId,
+            RoleName = roleName,
+            Action = "CaseListViewed",
+            Entity = "SurgicalCases",
+            EntityId = null,
+            NewValue = cases.Count.ToString(),
+            Remarks = $"Surgical case list viewed. Returned {cases.Count} records.",
+            IpAddress = ipAddress,
+            UserAgent = userAgent
+        });
 
-        await _auditRepository.AddPhiAccessLogsBulkAsync(phiLogs);
         return ServiceResultDto<List<SurgicalCaseDto>>.Ok(cases);
     }
 
@@ -79,22 +77,19 @@ public class CaseService : ICaseService
     string? userAgent)
     {
         var cases = await _caseRepository.GetMyCasesAsync(hospitalId, surgeonId);
-        var phiLogs = cases
-    .Select(surgicalCase => surgicalCase.PatientId)
-    .Distinct()
-    .Select(patientId => new CreatePhiAccessLogDto
-    {
-        HospitalId = hospitalId,
-        UserId = userId,
-        PatientId = patientId,
-        AccessType = "View",
-        Context = "My surgical cases viewed.",
-        IpAddress = ipAddress,
-        UserAgent = userAgent
-    })
-    .ToList();
-
-        await _auditRepository.AddPhiAccessLogsBulkAsync(phiLogs);
+        await _auditRepository.AddAuditLogAsync(new CreateAuditLogDto
+        {
+            HospitalId = hospitalId,
+            UserId = userId,
+            RoleName = roleName,
+            Action = "MyCaseListViewed",
+            Entity = "SurgicalCases",
+            EntityId = null,
+            NewValue = cases.Count.ToString(),
+            Remarks = $"Surgeon case list viewed. Returned {cases.Count} records.",
+            IpAddress = ipAddress,
+            UserAgent = userAgent
+        });
         return ServiceResultDto<List<SurgicalCaseDto>>.Ok(cases);
     }
 

@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue'
+import AppModal from '../../components/common/AppModal.vue'
 import PageHeader from '../../components/common/PageHeader.vue'
 import LoadingSpinner from '../../components/common/LoadingSpinner.vue'
 import EmptyState from '../../components/common/EmptyState.vue'
@@ -439,102 +440,110 @@ onMounted(async () => {
     </div>
 
     <!-- Update schedule card -->
-    <div v-if="selectedCase" class="page-card mt-4">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="mb-0">Update Case #{{ selectedCase.surgeryId }}</h5>
-        <button class="btn btn-sm btn-outline-secondary" @click="selectedCase = null">
-          Close
-        </button>
-      </div>
-
-      <div class="row g-3">
-        <div class="col-md-4">
-          <label class="form-label">Scheduled Start</label>
-          <input
-            v-model="updateForm.scheduledStart"
-            type="datetime-local"
-            class="form-control"
-          />
-        </div>
-
-        <div class="col-md-4">
-          <label class="form-label">Scheduled End</label>
-          <input
-            v-model="updateForm.scheduledEnd"
-            type="datetime-local"
-            class="form-control"
-          />
-        </div>
-      </div>
-
-      <div class="text-end mt-3">
-        <button class="btn btn-primary" :disabled="saving" @click="submitUpdateCase">
-          <span v-if="saving" class="spinner-border spinner-border-sm me-2"></span>
-          Save Schedule
-        </button>
-      </div>
+    <AppModal
+  :show="!!selectedCase"
+  :title="selectedCase ? `Update Case #${selectedCase.surgeryId}` : 'Update Case'"
+  size="lg"
+  @close="selectedCase = null"
+>
+  <div class="row g-3">
+    <div class="col-md-6">
+      <label class="form-label">Scheduled Start</label>
+      <input
+        v-model="updateForm.scheduledStart"
+        type="datetime-local"
+        class="form-control"
+      />
     </div>
+
+    <div class="col-md-6">
+      <label class="form-label">Scheduled End</label>
+      <input
+        v-model="updateForm.scheduledEnd"
+        type="datetime-local"
+        class="form-control"
+      />
+    </div>
+  </div>
+
+  <template #footer>
+    <button class="btn btn-outline-secondary" @click="selectedCase = null">
+      Cancel
+    </button>
+
+    <button
+      class="btn btn-primary"
+      :disabled="saving"
+      @click="submitUpdateCase"
+    >
+      <span v-if="saving" class="spinner-border spinner-border-sm me-2"></span>
+      Save Schedule
+    </button>
+  </template>
+</AppModal>
 
     <!-- Update status card -->
-    <div v-if="selectedStatusCase" class="page-card mt-4">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="mb-0">Update Status — Case #{{ selectedStatusCase.surgeryId }}</h5>
-        <button class="btn btn-sm btn-outline-secondary" @click="selectedStatusCase = null">
-          Close
-        </button>
-      </div>
-
-      <div class="row g-3">
-        <div class="col-md-3">
-          <label class="form-label">New Status</label>
-          <select v-model="statusForm.status" class="form-select">
-            <option value="InProgress">In Progress</option>
-            <option value="Completed">Completed</option>
-            <option value="Cancelled">Cancelled</option>
-          </select>
-        </div>
-
-        <div v-if="statusForm.status === 'InProgress'" class="col-md-3">
-          <label class="form-label">Actual Start</label>
-          <input
-            v-model="statusForm.actualStart"
-            type="datetime-local"
-            class="form-control"
-          />
-        </div>
-
-        <div v-if="statusForm.status === 'Completed'" class="col-md-3">
-          <label class="form-label">Actual End</label>
-          <input
-            v-model="statusForm.actualEnd"
-            type="datetime-local"
-            class="form-control"
-          />
-        </div>
-
-        <div v-if="statusForm.status === 'Cancelled'" class="col-md-4">
-          <label class="form-label">Cancellation Reason</label>
-          <select v-model="statusForm.cancellationReason" class="form-select">
-            <option value="">Select reason</option>
-            <option value="SurgeonCancelled">Surgeon Cancelled</option>
-            <option value="PatientNoShow">Patient No Show</option>
-            <option value="PatientNotCleared">Patient Not Cleared</option>
-            <option value="EmergencyBump">Emergency Bump</option>
-            <option value="Other">Other</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="text-end mt-3">
-        <button
-          class="btn btn-success"
-          :disabled="saving"
-          @click="submitStatusUpdate"
-        >
-          <span v-if="saving" class="spinner-border spinner-border-sm me-2"></span>
-          Update Status
-        </button>
-      </div>
+    <AppModal
+  :show="!!selectedStatusCase"
+  :title="selectedStatusCase ? `Update Status — Case #${selectedStatusCase.surgeryId}` : 'Update Status'"
+  size="lg"
+  @close="selectedStatusCase = null"
+>
+  <div class="row g-3">
+    <div class="col-md-4">
+      <label class="form-label">New Status</label>
+      <select v-model="statusForm.status" class="form-select">
+        <option value="InProgress">In Progress</option>
+        <option value="Completed">Completed</option>
+        <option value="Cancelled">Cancelled</option>
+      </select>
     </div>
+
+    <div v-if="statusForm.status === 'InProgress'" class="col-md-4">
+      <label class="form-label">Actual Start</label>
+      <input
+        v-model="statusForm.actualStart"
+        type="datetime-local"
+        class="form-control"
+      />
+    </div>
+
+    <div v-if="statusForm.status === 'Completed'" class="col-md-4">
+      <label class="form-label">Actual End</label>
+      <input
+        v-model="statusForm.actualEnd"
+        type="datetime-local"
+        class="form-control"
+      />
+    </div>
+
+    <div v-if="statusForm.status === 'Cancelled'" class="col-md-6">
+      <label class="form-label">Cancellation Reason</label>
+      <select v-model="statusForm.cancellationReason" class="form-select">
+        <option value="">Select reason</option>
+        <option value="SurgeonCancelled">Surgeon Cancelled</option>
+        <option value="PatientNoShow">Patient No Show</option>
+        <option value="PatientNotCleared">Patient Not Cleared</option>
+        <option value="EmergencyBump">Emergency Bump</option>
+        <option value="Other">Other</option>
+      </select>
+    </div>
+  </div>
+
+  <template #footer>
+    <button class="btn btn-outline-secondary" @click="selectedStatusCase = null">
+      Cancel
+    </button>
+
+    <button
+      class="btn btn-success"
+      :disabled="saving"
+      @click="submitStatusUpdate"
+    >
+      <span v-if="saving" class="spinner-border spinner-border-sm me-2"></span>
+      Update Status
+    </button>
+  </template>
+</AppModal>
   </div>
 </template>

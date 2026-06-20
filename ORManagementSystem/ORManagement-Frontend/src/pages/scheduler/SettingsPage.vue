@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue'
+import AppModal from '../../components/common/AppModal.vue'
 import PageHeader from '../../components/common/PageHeader.vue'
 import LoadingSpinner from '../../components/common/LoadingSpinner.vue'
 import EmptyState from '../../components/common/EmptyState.vue'
@@ -127,28 +128,41 @@ onMounted(loadSettings)
         </div>
       </div>
 
-      <div v-if="selectedSetting" class="page-card mt-4">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-          <h5 class="mb-0">Edit Setting — {{ selectedSetting.settingKey }}</h5>
-          <button class="btn btn-sm btn-outline-secondary" @click="selectedSetting = null">
-            Close
-          </button>
-        </div>
+      <AppModal
+  :show="!!selectedSetting"
+  :title="selectedSetting ? `Edit Setting — ${selectedSetting.settingKey}` : 'Edit Setting'"
+  size="md"
+  @close="selectedSetting = null"
+>
+  <div class="mb-3">
+    <label class="form-label">Setting Value</label>
+    <input
+      v-model="settingForm.settingValue"
+      class="form-control"
+    />
+  </div>
 
-        <div class="row g-3 align-items-end">
-          <div class="col-md-6">
-            <label class="form-label">Setting Value</label>
-            <input v-model="settingForm.settingValue" class="form-control" />
-          </div>
+  <template #footer>
+    <button
+      class="btn btn-outline-secondary"
+      @click="selectedSetting = null"
+    >
+      Cancel
+    </button>
 
-          <div class="col-md-3">
-            <button class="btn btn-primary w-100" :disabled="saving" @click="submitUpdate">
-              <span v-if="saving" class="spinner-border spinner-border-sm me-2"></span>
-              Save
-            </button>
-          </div>
-        </div>
-      </div>
+    <button
+      class="btn btn-primary"
+      :disabled="saving"
+      @click="submitUpdate"
+    >
+      <span
+        v-if="saving"
+        class="spinner-border spinner-border-sm me-2"
+      ></span>
+      Save
+    </button>
+  </template>
+</AppModal>
     </div>
   </div>
 </template>

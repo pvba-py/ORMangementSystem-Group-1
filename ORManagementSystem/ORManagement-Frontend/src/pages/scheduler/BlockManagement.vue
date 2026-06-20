@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+
 import PageHeader from '../../components/common/PageHeader.vue'
 import LoadingSpinner from '../../components/common/LoadingSpinner.vue'
 import EmptyState from '../../components/common/EmptyState.vue'
@@ -18,6 +18,8 @@ import {
 } from '../../services/blockService'
 import { getSurgeons } from '../../services/masterDataService'
 import { getRooms } from '../../services/roomService'
+import { onMounted, ref } from 'vue'
+import AppModal from '../../components/common/AppModal.vue'
 import { formatDate, formatTime } from '../../utils/formatters'
 import { showToast } from '../../utils/toast'
 
@@ -30,6 +32,11 @@ const templates = ref([])
 const blocks = ref([])
 const surgeons = ref([])
 const rooms = ref([])
+
+const showTemplateModal = ref(false)
+const showEditBlockModal = ref(false)
+const showReleaseBlockModal = ref(false)
+const showExceptionModal = ref(false)
 
 const selectedTemplate = ref(null)
 const selectedBlock = ref(null)
@@ -155,6 +162,13 @@ const resetTemplateForm = () => {
     effectiveTo: '',
     isActive: true
   }
+
+  showTemplateModal.value = false
+}
+
+const openCreateTemplate = () => {
+  resetTemplateForm()
+  showTemplateModal.value = true
 }
 
 const openEditTemplate = template => {
@@ -171,6 +185,8 @@ const openEditTemplate = template => {
     effectiveTo: template.effectiveTo?.substring(0, 10) || '',
     isActive: template.isActive
   }
+
+  showTemplateModal.value = true
 }
 
 const submitTemplate = async () => {
@@ -240,6 +256,19 @@ const handleDeleteTemplate = async template => {
 
 const openException = template => {
   selectedExceptionTemplate.value = template
+
+  exceptionForm.value = {
+    skipDate: '',
+    reason: ''
+  }
+
+  showExceptionModal.value = true
+}
+
+const closeExceptionModal = () => {
+  selectedExceptionTemplate.value = null
+  showExceptionModal.value = false
+
   exceptionForm.value = {
     skipDate: '',
     reason: ''
@@ -263,7 +292,7 @@ const submitException = async () => {
     })
 
     showToast('Block exception added successfully.', 'success')
-    selectedExceptionTemplate.value = null
+    closeExceptionModal()
   } catch (err) {
     const message =
       err?.response?.data?.message ||
@@ -291,6 +320,7 @@ const submitGenerateBlocks = async () => {
     })
 
     showToast(`Blocks generated: ${response.data.generatedCount}`, 'success')
+    activeTab.value = 'blocks'
     await loadBlocks()
   } catch (err) {
     const message =
@@ -316,6 +346,13 @@ const openEditBlock = block => {
     blockStatus: block.blockStatus,
     remarks: block.remarks || ''
   }
+
+  showEditBlockModal.value = true
+}
+
+const closeEditBlockModal = () => {
+  selectedBlock.value = null
+  showEditBlockModal.value = false
 }
 
 const submitBlockUpdate = async () => {
@@ -335,7 +372,7 @@ const submitBlockUpdate = async () => {
     })
 
     showToast('Block updated successfully.', 'success')
-    selectedBlock.value = null
+    closeEditBlockModal()
     await loadBlocks()
   } catch (err) {
     const message =
@@ -374,6 +411,13 @@ const openReleaseBlock = block => {
     endTime: formatTime(block.endTime),
     remarks: ''
   }
+
+  showReleaseBlockModal.value = true
+}
+
+const closeReleaseBlockModal = () => {
+  selectedReleaseBlock.value = null
+  showReleaseBlockModal.value = false
 }
 
 const submitReleaseBlock = async () => {
@@ -389,7 +433,7 @@ const submitReleaseBlock = async () => {
     })
 
     showToast('Block released successfully.', 'success')
-    selectedReleaseBlock.value = null
+    closeReleaseBlockModal()
     await loadBlocks()
   } catch (err) {
     const message =
@@ -455,12 +499,20 @@ onMounted(loadPage)
           <div class="row g-3 align-items-end">
             <div class="col-md-3">
               <label class="form-label">From Date</label>
-              <input v-model="blockFilters.fromDate" type="date" class="form-control" />
+              <input
+                v-model="blockFilters.fromDate"
+                type="date"
+                class="form-control"
+              />
             </div>
 
             <div class="col-md-3">
               <label class="form-label">To Date</label>
-              <input v-model="blockFilters.toDate" type="date" class="form-control" />
+              <input
+                v-model="blockFilters.toDate"
+                type="date"
+                class="form-control"
+              />
             </div>
 
             <div class="col-md-2">
@@ -562,210 +614,15 @@ onMounted(loadPage)
             </table>
           </div>
         </div>
-
-        <!-- Edit Block Panel -->
-        <div v-if="selectedBlock" class="page-card mt-4">
-          <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 class="mb-0">Edit Block #{{ selectedBlock.blockId }}</h5>
-            <button class="btn btn-sm btn-outline-secondary" @click="selectedBlock = null">
-              Close
-            </button>
-          </div>
-
-          <div class="row g-3">
-            <div class="col-md-3">
-              <label class="form-label">Surgeon</label>
-              <select v-model="blockForm.surgeonId" class="form-select">
-                <option
-                  v-for="surgeon in surgeons"
-                  :key="surgeon.surgeonId"
-                  :value="surgeon.surgeonId"
-                >
-                  {{ surgeon.fullName || surgeon.surgeonName }}
-                </option>
-              </select>
-            </div>
-
-            <div class="col-md-3">
-              <label class="form-label">Room</label>
-              <select v-model="blockForm.orRoomId" class="form-select">
-                <option
-                  v-for="room in rooms"
-                  :key="room.orRoomId"
-                  :value="room.orRoomId"
-                >
-                  {{ room.roomName }}
-                </option>
-              </select>
-            </div>
-
-            <div class="col-md-2">
-              <label class="form-label">Date</label>
-              <input v-model="blockForm.blockDate" type="date" class="form-control" />
-            </div>
-
-            <div class="col-md-2">
-              <label class="form-label">Start</label>
-              <input v-model="blockForm.startTime" type="time" class="form-control" />
-            </div>
-
-            <div class="col-md-2">
-              <label class="form-label">End</label>
-              <input v-model="blockForm.endTime" type="time" class="form-control" />
-            </div>
-
-            <div class="col-md-3">
-              <label class="form-label">Status</label>
-              <select v-model="blockForm.blockStatus" class="form-select">
-                <option value="Allocated">Allocated</option>
-                <option value="PartiallyBooked">Partially Booked</option>
-                <option value="FullyBooked">Fully Booked</option>
-                <option value="Released">Released</option>
-                <option value="Cancelled">Cancelled</option>
-              </select>
-            </div>
-
-            <div class="col-md-9">
-              <label class="form-label">Remarks</label>
-              <input v-model="blockForm.remarks" class="form-control" />
-            </div>
-          </div>
-
-          <div class="text-end mt-3">
-            <button class="btn btn-primary" :disabled="saving" @click="submitBlockUpdate">
-              Save Block
-            </button>
-          </div>
-        </div>
-
-        <!-- Release Block Panel -->
-        <div v-if="selectedReleaseBlock" class="page-card mt-4">
-          <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 class="mb-0">Release Block #{{ selectedReleaseBlock.blockId }}</h5>
-            <button class="btn btn-sm btn-outline-secondary" @click="selectedReleaseBlock = null">
-              Close
-            </button>
-          </div>
-
-          <div class="row g-3">
-            <div class="col-md-3">
-              <label class="form-label">Release Start</label>
-              <input v-model="releaseForm.startTime" type="time" class="form-control" />
-            </div>
-
-            <div class="col-md-3">
-              <label class="form-label">Release End</label>
-              <input v-model="releaseForm.endTime" type="time" class="form-control" />
-            </div>
-
-            <div class="col-md-6">
-              <label class="form-label">Remarks</label>
-              <input v-model="releaseForm.remarks" class="form-control" />
-            </div>
-          </div>
-
-          <div class="text-end mt-3">
-            <button class="btn btn-success" :disabled="saving" @click="submitReleaseBlock">
-              Release Time
-            </button>
-          </div>
-        </div>
       </div>
 
       <!-- Templates Tab -->
       <div v-if="activeTab === 'templates'">
-        <div class="page-card mb-4">
-          <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 class="mb-0">
-              {{ selectedTemplate ? 'Edit Template' : 'Create Template' }}
-            </h5>
-
-            <button
-              v-if="selectedTemplate"
-              class="btn btn-sm btn-outline-secondary"
-              @click="resetTemplateForm"
-            >
-              Cancel Edit
-            </button>
-          </div>
-
-          <div class="row g-3">
-            <div class="col-md-3">
-              <label class="form-label">Surgeon</label>
-              <select v-model="templateForm.surgeonId" class="form-select">
-                <option value="">Select surgeon</option>
-                <option
-                  v-for="surgeon in surgeons"
-                  :key="surgeon.surgeonId"
-                  :value="surgeon.surgeonId"
-                >
-                  {{ surgeon.fullName || surgeon.surgeonName }}
-                </option>
-              </select>
-            </div>
-
-            <div class="col-md-3">
-              <label class="form-label">Room</label>
-              <select v-model="templateForm.orRoomId" class="form-select">
-                <option value="">Select room</option>
-                <option
-                  v-for="room in rooms"
-                  :key="room.orRoomId"
-                  :value="room.orRoomId"
-                >
-                  {{ room.roomName }}
-                </option>
-              </select>
-            </div>
-
-            <div class="col-md-3">
-              <label class="form-label">Specialty</label>
-              <input v-model="templateForm.specialty" class="form-control" />
-            </div>
-
-            <div class="col-md-3">
-              <label class="form-label">Day</label>
-              <select v-model.number="templateForm.dayOfWeek" class="form-select">
-                <option v-for="day in 7" :key="day" :value="day">
-                  {{ dayNames[day] }}
-                </option>
-              </select>
-            </div>
-
-            <div class="col-md-2">
-              <label class="form-label">Start</label>
-              <input v-model="templateForm.startTime" type="time" class="form-control" />
-            </div>
-
-            <div class="col-md-2">
-              <label class="form-label">End</label>
-              <input v-model="templateForm.endTime" type="time" class="form-control" />
-            </div>
-
-            <div class="col-md-3">
-              <label class="form-label">Effective From</label>
-              <input v-model="templateForm.effectiveFrom" type="date" class="form-control" />
-            </div>
-
-            <div class="col-md-3">
-              <label class="form-label">Effective To</label>
-              <input v-model="templateForm.effectiveTo" type="date" class="form-control" />
-            </div>
-
-            <div class="col-md-2">
-              <label class="form-label">Active</label>
-              <select v-model="templateForm.isActive" class="form-select">
-                <option :value="true">Yes</option>
-                <option :value="false">No</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="text-end mt-3">
-            <button class="btn btn-primary" :disabled="saving" @click="submitTemplate">
-              {{ selectedTemplate ? 'Update Template' : 'Create Template' }}
-            </button>
-          </div>
+        <div class="d-flex justify-content-end mb-3">
+          <button class="btn btn-primary" @click="openCreateTemplate">
+            <i class="bi bi-plus-circle me-1"></i>
+            Create Template
+          </button>
         </div>
 
         <div class="page-card">
@@ -807,53 +664,38 @@ onMounted(loadPage)
                     </span>
                   </td>
                   <td>
-                    <span class="badge" :class="template.isActive ? 'bg-success' : 'bg-secondary'">
+                    <span
+                      class="badge"
+                      :class="template.isActive ? 'bg-success' : 'bg-secondary'"
+                    >
                       {{ template.isActive ? 'Active' : 'Inactive' }}
                     </span>
                   </td>
                   <td class="text-end">
-                    <button class="btn btn-sm btn-outline-primary me-2" @click="openEditTemplate(template)">
+                    <button
+                      class="btn btn-sm btn-outline-primary me-2"
+                      @click="openEditTemplate(template)"
+                    >
                       Edit
                     </button>
 
-                    <button class="btn btn-sm btn-outline-warning me-2" @click="openException(template)">
+                    <button
+                      class="btn btn-sm btn-outline-warning me-2"
+                      @click="openException(template)"
+                    >
                       Exception
                     </button>
 
-                    <button class="btn btn-sm btn-outline-danger" @click="handleDeleteTemplate(template)">
+                    <button
+                      class="btn btn-sm btn-outline-danger"
+                      @click="handleDeleteTemplate(template)"
+                    >
                       Deactivate
                     </button>
                   </td>
                 </tr>
               </tbody>
             </table>
-          </div>
-        </div>
-
-        <div v-if="selectedExceptionTemplate" class="page-card mt-4">
-          <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 class="mb-0">Add Exception — Template #{{ selectedExceptionTemplate.templateId }}</h5>
-            <button class="btn btn-sm btn-outline-secondary" @click="selectedExceptionTemplate = null">
-              Close
-            </button>
-          </div>
-
-          <div class="row g-3">
-            <div class="col-md-4">
-              <label class="form-label">Skip Date</label>
-              <input v-model="exceptionForm.skipDate" type="date" class="form-control" />
-            </div>
-
-            <div class="col-md-8">
-              <label class="form-label">Reason</label>
-              <input v-model="exceptionForm.reason" class="form-control" />
-            </div>
-          </div>
-
-          <div class="text-end mt-3">
-            <button class="btn btn-warning" :disabled="saving" @click="submitException">
-              Add Exception
-            </button>
           </div>
         </div>
       </div>
@@ -865,21 +707,289 @@ onMounted(loadPage)
         <div class="row g-3 align-items-end">
           <div class="col-md-4">
             <label class="form-label">From Date</label>
-            <input v-model="generateForm.fromDate" type="date" class="form-control" />
+            <input
+              v-model="generateForm.fromDate"
+              type="date"
+              class="form-control"
+            />
           </div>
 
           <div class="col-md-4">
             <label class="form-label">To Date</label>
-            <input v-model="generateForm.toDate" type="date" class="form-control" />
+            <input
+              v-model="generateForm.toDate"
+              type="date"
+              class="form-control"
+            />
           </div>
 
           <div class="col-md-4">
-            <button class="btn btn-primary w-100" :disabled="saving" @click="submitGenerateBlocks">
+            <button
+              class="btn btn-primary w-100"
+              :disabled="saving"
+              @click="submitGenerateBlocks"
+            >
+              <span
+                v-if="saving"
+                class="spinner-border spinner-border-sm me-2"
+              ></span>
               Generate Blocks
             </button>
           </div>
         </div>
       </div>
     </div>
+
+    <!-- Edit Block Modal -->
+    <AppModal
+      :show="showEditBlockModal"
+      :title="selectedBlock ? `Edit Block #${selectedBlock.blockId}` : 'Edit Block'"
+      size="xl"
+      @close="closeEditBlockModal"
+    >
+      <div class="row g-3">
+        <div class="col-md-3">
+          <label class="form-label">Surgeon</label>
+          <select v-model="blockForm.surgeonId" class="form-select">
+            <option
+              v-for="surgeon in surgeons"
+              :key="surgeon.surgeonId"
+              :value="surgeon.surgeonId"
+            >
+              {{ surgeon.fullName || surgeon.surgeonName }}
+            </option>
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Room</label>
+          <select v-model="blockForm.orRoomId" class="form-select">
+            <option
+              v-for="room in rooms"
+              :key="room.orRoomId"
+              :value="room.orRoomId"
+            >
+              {{ room.roomName }}
+            </option>
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <label class="form-label">Date</label>
+          <input v-model="blockForm.blockDate" type="date" class="form-control" />
+        </div>
+
+        <div class="col-md-2">
+          <label class="form-label">Start</label>
+          <input v-model="blockForm.startTime" type="time" class="form-control" />
+        </div>
+
+        <div class="col-md-2">
+          <label class="form-label">End</label>
+          <input v-model="blockForm.endTime" type="time" class="form-control" />
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Status</label>
+          <select v-model="blockForm.blockStatus" class="form-select">
+            <option value="Allocated">Allocated</option>
+            <option value="PartiallyBooked">Partially Booked</option>
+            <option value="FullyBooked">Fully Booked</option>
+            <option value="Released">Released</option>
+            <option value="Cancelled">Cancelled</option>
+          </select>
+        </div>
+
+        <div class="col-md-9">
+          <label class="form-label">Remarks</label>
+          <input v-model="blockForm.remarks" class="form-control" />
+        </div>
+      </div>
+
+      <template #footer>
+        <button class="btn btn-outline-secondary" @click="closeEditBlockModal">
+          Cancel
+        </button>
+
+        <button
+          class="btn btn-primary"
+          :disabled="saving"
+          @click="submitBlockUpdate"
+        >
+          <span v-if="saving" class="spinner-border spinner-border-sm me-2"></span>
+          Save Block
+        </button>
+      </template>
+    </AppModal>
+
+    <!-- Release Block Modal -->
+    <AppModal
+      :show="showReleaseBlockModal"
+      :title="selectedReleaseBlock ? `Release Block #${selectedReleaseBlock.blockId}` : 'Release Block'"
+      size="lg"
+      @close="closeReleaseBlockModal"
+    >
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Release Start</label>
+          <input v-model="releaseForm.startTime" type="time" class="form-control" />
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Release End</label>
+          <input v-model="releaseForm.endTime" type="time" class="form-control" />
+        </div>
+
+        <div class="col-md-12">
+          <label class="form-label">Remarks</label>
+          <input v-model="releaseForm.remarks" class="form-control" />
+        </div>
+      </div>
+
+      <template #footer>
+        <button class="btn btn-outline-secondary" @click="closeReleaseBlockModal">
+          Cancel
+        </button>
+
+        <button
+          class="btn btn-success"
+          :disabled="saving"
+          @click="submitReleaseBlock"
+        >
+          <span v-if="saving" class="spinner-border spinner-border-sm me-2"></span>
+          Release Time
+        </button>
+      </template>
+    </AppModal>
+
+    <!-- Template Modal -->
+    <AppModal
+      :show="showTemplateModal"
+      :title="selectedTemplate ? 'Edit Template' : 'Create Template'"
+      size="xl"
+      @close="resetTemplateForm"
+    >
+      <div class="row g-3">
+        <div class="col-md-3">
+          <label class="form-label">Surgeon</label>
+          <select v-model="templateForm.surgeonId" class="form-select">
+            <option value="">Select surgeon</option>
+            <option
+              v-for="surgeon in surgeons"
+              :key="surgeon.surgeonId"
+              :value="surgeon.surgeonId"
+            >
+              {{ surgeon.fullName || surgeon.surgeonName }}
+            </option>
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Room</label>
+          <select v-model="templateForm.orRoomId" class="form-select">
+            <option value="">Select room</option>
+            <option
+              v-for="room in rooms"
+              :key="room.orRoomId"
+              :value="room.orRoomId"
+            >
+              {{ room.roomName }}
+            </option>
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Specialty</label>
+          <input v-model="templateForm.specialty" class="form-control" />
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Day</label>
+          <select v-model.number="templateForm.dayOfWeek" class="form-select">
+            <option v-for="day in 7" :key="day" :value="day">
+              {{ dayNames[day] }}
+            </option>
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <label class="form-label">Start</label>
+          <input v-model="templateForm.startTime" type="time" class="form-control" />
+        </div>
+
+        <div class="col-md-2">
+          <label class="form-label">End</label>
+          <input v-model="templateForm.endTime" type="time" class="form-control" />
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Effective From</label>
+          <input v-model="templateForm.effectiveFrom" type="date" class="form-control" />
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Effective To</label>
+          <input v-model="templateForm.effectiveTo" type="date" class="form-control" />
+        </div>
+
+        <div class="col-md-2">
+          <label class="form-label">Active</label>
+          <select v-model="templateForm.isActive" class="form-select">
+            <option :value="true">Yes</option>
+            <option :value="false">No</option>
+          </select>
+        </div>
+      </div>
+
+      <template #footer>
+        <button class="btn btn-outline-secondary" @click="resetTemplateForm">
+          Cancel
+        </button>
+
+        <button
+          class="btn btn-primary"
+          :disabled="saving"
+          @click="submitTemplate"
+        >
+          <span v-if="saving" class="spinner-border spinner-border-sm me-2"></span>
+          {{ selectedTemplate ? 'Update Template' : 'Create Template' }}
+        </button>
+      </template>
+    </AppModal>
+
+    <!-- Exception Modal -->
+    <AppModal
+      :show="showExceptionModal"
+      :title="selectedExceptionTemplate ? `Add Exception — Template #${selectedExceptionTemplate.templateId}` : 'Add Exception'"
+      size="lg"
+      @close="closeExceptionModal"
+    >
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Skip Date</label>
+          <input v-model="exceptionForm.skipDate" type="date" class="form-control" />
+        </div>
+
+        <div class="col-md-8">
+          <label class="form-label">Reason</label>
+          <input v-model="exceptionForm.reason" class="form-control" />
+        </div>
+      </div>
+
+      <template #footer>
+        <button class="btn btn-outline-secondary" @click="closeExceptionModal">
+          Cancel
+        </button>
+
+        <button
+          class="btn btn-warning"
+          :disabled="saving"
+          @click="submitException"
+        >
+          <span v-if="saving" class="spinner-border spinner-border-sm me-2"></span>
+          Add Exception
+        </button>
+      </template>
+    </AppModal>
   </div>
 </template>

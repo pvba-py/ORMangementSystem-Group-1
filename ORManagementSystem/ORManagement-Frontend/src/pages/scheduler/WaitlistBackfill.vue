@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue'
+import AppModal from '../../components/common/AppModal.vue'
 import PageHeader from '../../components/common/PageHeader.vue'
 import LoadingSpinner from '../../components/common/LoadingSpinner.vue'
 import EmptyState from '../../components/common/EmptyState.vue'
@@ -25,6 +26,9 @@ const releasedSlots = ref([])
 const waitlist = ref([])
 const starvationList = ref([])
 const matches = ref([])
+
+const showMatchesModal = ref(false)
+const showSlotStatusModal = ref(false)
 
 const selectedSlot = ref(null)
 const selectedWaitlist = ref(null)
@@ -85,6 +89,7 @@ const openMatches = async slot => {
   selectedSlot.value = slot
   selectedWaitlist.value = null
   matches.value = []
+  showMatchesModal.value = true
 
   try {
     const response = await getSlotMatches(slot.slotId)
@@ -107,6 +112,7 @@ const openSlotStatus = slot => {
   selectedSlot.value = slot
   selectedWaitlist.value = null
   matches.value = []
+  showSlotStatusModal.value = true
 
   slotStatusForm.value = {
     slotState: slot.slotState || 'Matched'
@@ -125,6 +131,8 @@ const submitSlotStatus = async () => {
 
     showToast('Released slot status updated successfully.', 'success')
     selectedSlot.value = null
+    showSlotStatusModal.value = false
+  selectedSlot.value = null
     await loadReleasedSlots()
   } catch (err) {
     const message =
@@ -155,6 +163,7 @@ const assignMatch = async match => {
 
     showToast('Waitlist request assigned successfully.', 'success')
     matches.value = []
+    showMatchesModal.value = false
     selectedSlot.value = null
     await loadPage()
   } catch (err) {
@@ -329,86 +338,108 @@ onMounted(loadPage)
         </div>
 
         <!-- Matches panel -->
-        <div v-if="selectedSlot && matches.length > 0" class="page-card mt-4">
-          <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 class="mb-0">Matches for Slot #{{ selectedSlot.slotId }}</h5>
-            <button class="btn btn-sm btn-outline-secondary" @click="selectedSlot = null; matches = []">
-              Close
+        <AppModal
+  :show="showMatchesModal"
+  :title="selectedSlot ? `Matches for Slot #${selectedSlot.slotId}` : 'Slot Matches'"
+  size="xl"
+  @close="showMatchesModal = false; selectedSlot = null; matches = []"
+>
+  <EmptyState
+    v-if="matches.length === 0"
+    title="No matches"
+    message="No matching waitlist requests were found for this slot."
+    icon="bi-search"
+  />
+
+  <div v-else class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>Waitlist</th>
+          <th>Request</th>
+          <th>Surgery</th>
+          <th>Priority</th>
+          <th>Readiness</th>
+          <th>Duration</th>
+          <th>Waited</th>
+          <th>Slot Min</th>
+          <th>Score</th>
+          <th class="text-end">Action</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        <tr v-for="match in matches" :key="match.waitlistId">
+          <td>#{{ match.waitlistId }}</td>
+          <td>#{{ match.requestId }}</td>
+          <td>{{ match.surgeryType }}</td>
+          <td>{{ match.priority }}</td>
+          <td>{{ match.patientReadiness }}</td>
+          <td>{{ match.estimatedDurationMin }} min</td>
+          <td>
+            {{ match.cyclesWaited }} cycles
+            <br />
+            <small>{{ match.waitingDays }} days</small>
+          </td>
+          <td>{{ match.slotMin }} min</td>
+          <td>
+            <strong>{{ Number(match.matchScore).toFixed(2) }}</strong>
+          </td>
+          <td class="text-end">
+            <button
+              class="btn btn-sm btn-success"
+              :disabled="saving"
+              @click="assignMatch(match)"
+            >
+              Assign
             </button>
-          </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
 
-          <div class="table-responsive">
-            <table class="table table-hover align-middle">
-              <thead>
-                <tr>
-                  <th>Waitlist</th>
-                  <th>Request</th>
-                  <th>Surgery</th>
-                  <th>Priority</th>
-                  <th>Readiness</th>
-                  <th>Duration</th>
-                  <th>Waited</th>
-                  <th>Slot Min</th>
-                  <th>Score</th>
-                  <th class="text-end">Action</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                <tr v-for="match in matches" :key="match.waitlistId">
-                  <td>#{{ match.waitlistId }}</td>
-                  <td>#{{ match.requestId }}</td>
-                  <td>{{ match.surgeryType }}</td>
-                  <td>{{ match.priority }}</td>
-                  <td>{{ match.patientReadiness }}</td>
-                  <td>{{ match.estimatedDurationMin }} min</td>
-                  <td>
-                    {{ match.cyclesWaited }} cycles
-                    <br />
-                    <small>{{ match.waitingDays }} days</small>
-                  </td>
-                  <td>{{ match.slotMin }} min</td>
-                  <td>
-                    <strong>{{ Number(match.matchScore).toFixed(2) }}</strong>
-                  </td>
-                  <td class="text-end">
-                    <button class="btn btn-sm btn-success" :disabled="saving" @click="assignMatch(match)">
-                      Assign
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
+  <template #footer>
+    <button
+      class="btn btn-outline-secondary"
+      @click="showMatchesModal = false; selectedSlot = null; matches = []"
+    >
+      Close
+    </button>
+  </template>
+</AppModal>
 
         <!-- Slot status panel -->
-        <div v-if="selectedSlot && matches.length === 0" class="page-card mt-4">
-          <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 class="mb-0">Update Slot #{{ selectedSlot.slotId }}</h5>
-            <button class="btn btn-sm btn-outline-secondary" @click="selectedSlot = null">
-              Close
-            </button>
-          </div>
+        <AppModal
+  :show="showSlotStatusModal"
+  :title="selectedSlot ? `Update Slot #${selectedSlot.slotId}` : 'Update Slot'"
+  size="md"
+  @close="showSlotStatusModal = false; selectedSlot = null"
+>
+  <div>
+    <label class="form-label">Slot State</label>
+    <select v-model="slotStatusForm.slotState" class="form-select">
+      <option value="Available">Available</option>
+      <option value="Matched">Matched</option>
+      <option value="Assigned">Assigned</option>
+      <option value="Expired">Expired</option>
+    </select>
+  </div>
 
-          <div class="row g-3 align-items-end">
-            <div class="col-md-4">
-              <label class="form-label">Slot State</label>
-              <select v-model="slotStatusForm.slotState" class="form-select">
-                <option value="Available">Available</option>
-                <option value="Matched">Matched</option>
-                <option value="Assigned">Assigned</option>
-                <option value="Expired">Expired</option>
-              </select>
-            </div>
+  <template #footer>
+    <button
+      class="btn btn-outline-secondary"
+      @click="showSlotStatusModal = false; selectedSlot = null"
+    >
+      Cancel
+    </button>
 
-            <div class="col-md-4">
-              <button class="btn btn-primary" :disabled="saving" @click="submitSlotStatus">
-                Save Status
-              </button>
-            </div>
-          </div>
-        </div>
+    <button class="btn btn-primary" :disabled="saving" @click="submitSlotStatus">
+      <span v-if="saving" class="spinner-border spinner-border-sm me-2"></span>
+      Save Status
+    </button>
+  </template>
+</AppModal>
       </div>
 
       <!-- Waitlist Tab -->

@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue'
+import AppModal from '../../components/common/AppModal.vue'
 import PageHeader from '../../components/common/PageHeader.vue'
 import LoadingSpinner from '../../components/common/LoadingSpinner.vue'
 import EmptyState from '../../components/common/EmptyState.vue'
@@ -253,37 +254,50 @@ onMounted(loadPage)
           </div>
         </div>
 
-        <div v-if="selectedRecommendation" class="page-card mt-4">
-          <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 class="mb-0">Review Recommendation #{{ selectedRecommendation.recId }}</h5>
-            <button class="btn btn-sm btn-outline-secondary" @click="selectedRecommendation = null">
-              Close
-            </button>
-          </div>
+        <AppModal
+  :show="!!selectedRecommendation"
+  :title="selectedRecommendation ? `Review Recommendation #${selectedRecommendation.recId}` : 'Review Recommendation'"
+  size="lg"
+  @close="selectedRecommendation = null"
+>
+  <div v-if="selectedRecommendation" class="mb-3">
+    <label class="form-label">Description</label>
+    <div class="p-3 bg-light rounded">
+      {{ selectedRecommendation.description }}
+    </div>
+  </div>
 
-          <div class="row g-3">
-            <div class="col-md-4">
-              <label class="form-label">Status</label>
-              <select v-model="statusForm.status" class="form-select">
-                <option value="Approved">Approved</option>
-                <option value="Rejected">Rejected</option>
-                <option value="Modified">Modified</option>
-                <option value="Pending">Pending</option>
-              </select>
-            </div>
+  <div class="row g-3">
+    <div class="col-md-4">
+      <label class="form-label">Status</label>
+      <select v-model="statusForm.status" class="form-select">
+        <option value="Approved">Approved</option>
+        <option value="Rejected">Rejected</option>
+        <option value="Modified">Modified</option>
+        <option value="Pending">Pending</option>
+      </select>
+    </div>
 
-            <div class="col-md-8">
-              <label class="form-label">Scheduler Remarks</label>
-              <input v-model="statusForm.schedulerRemarks" class="form-control" />
-            </div>
-          </div>
+    <div class="col-md-8">
+      <label class="form-label">Scheduler Remarks</label>
+      <input v-model="statusForm.schedulerRemarks" class="form-control" />
+    </div>
+  </div>
 
-          <div class="text-end mt-3">
-            <button class="btn btn-primary" :disabled="saving" @click="submitStatusUpdate">
-              Save Review
-            </button>
-          </div>
-        </div>
+  <template #footer>
+    <button
+      class="btn btn-outline-secondary"
+      @click="selectedRecommendation = null"
+    >
+      Cancel
+    </button>
+
+    <button class="btn btn-primary" :disabled="saving" @click="submitStatusUpdate">
+      <span v-if="saving" class="spinner-border spinner-border-sm me-2"></span>
+      Save Review
+    </button>
+  </template>
+</AppModal>
       </div>
 
       <div v-if="activeTab === 'demand'" class="page-card">

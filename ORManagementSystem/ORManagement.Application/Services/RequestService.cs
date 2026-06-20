@@ -61,22 +61,20 @@ public class RequestService : IRequestService
     string? userAgent)
     {
         var requests = await _requestRepository.GetRequestsAsync(hospitalId, status, cycleId);
-        var phiLogs = requests
-    .Select(request => request.PatientId)
-    .Distinct()
-    .Select(patientId => new CreatePhiAccessLogDto
-    {
-        HospitalId = hospitalId,
-        UserId = userId,
-        PatientId = patientId,
-        AccessType = "View",
-        Context = "OR request list viewed.",
-        IpAddress = ipAddress,
-        UserAgent = userAgent
-    })
-    .ToList();
+        await _auditRepository.AddAuditLogAsync(new CreateAuditLogDto
+        {
+            HospitalId = hospitalId,
+            UserId = userId,
+            RoleName = roleName,
+            Action = "RequestListViewed",
+            Entity = "ORRequests",
+            EntityId = null,
+            NewValue = requests.Count.ToString(),
+            Remarks = $"OR request list viewed. Returned {requests.Count} records.",
+            IpAddress = ipAddress,
+            UserAgent = userAgent
+        });
 
-        await _auditRepository.AddPhiAccessLogsBulkAsync(phiLogs);
         foreach (var request in requests)
         {
             request.AvailableDaysDisplay = _availabilityWindowEngine.ToDisplayText(request.AvailableDaysMask);
@@ -94,22 +92,20 @@ public class RequestService : IRequestService
     string? userAgent)
     {
         var requests = await _requestRepository.GetMyRequestsAsync(hospitalId, surgeonId);
-        var phiLogs = requests
-    .Select(request => request.PatientId)
-    .Distinct()
-    .Select(patientId => new CreatePhiAccessLogDto
-    {
-        HospitalId = hospitalId,
-        UserId = userId,
-        PatientId = patientId,
-        AccessType = "View",
-        Context = "My OR requests viewed.",
-        IpAddress = ipAddress,
-        UserAgent = userAgent
-    })
-    .ToList();
+        await _auditRepository.AddAuditLogAsync(new CreateAuditLogDto
+        {
+            HospitalId = hospitalId,
+            UserId = userId,
+            RoleName = roleName,
+            Action = "MyRequestListViewed",
+            Entity = "ORRequests",
+            EntityId = null,
+            NewValue = requests.Count.ToString(),
+            Remarks = $"Surgeon request list viewed. Returned {requests.Count} records.",
+            IpAddress = ipAddress,
+            UserAgent = userAgent
+        });
 
-        await _auditRepository.AddPhiAccessLogsBulkAsync(phiLogs);
         foreach (var request in requests)
         {
             request.AvailableDaysDisplay = _availabilityWindowEngine.ToDisplayText(request.AvailableDaysMask);

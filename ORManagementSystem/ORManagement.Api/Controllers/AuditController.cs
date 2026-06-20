@@ -18,20 +18,23 @@ public class AuditController : ApiControllerBase
         _auditService = auditService;
         _logger = logger;
     }
-
     [HttpGet("logs")]
     public async Task<IActionResult> GetAuditLogs(
-        [FromQuery] string? entity,
-        [FromQuery] string? action,
-        [FromQuery] DateTime? fromDate,
-        [FromQuery] DateTime? toDate)
+    [FromQuery] string? entity,
+    [FromQuery] string? action,
+    [FromQuery] DateTime? fromDate,
+    [FromQuery] DateTime? toDate,
+    [FromQuery] int pageNumber = 1,
+    [FromQuery] int pageSize = 20)
     {
         var result = await _auditService.GetAuditLogsAsync(
             GetCurrentHospitalIdOrDefault(),
             entity,
             action,
             fromDate,
-            toDate);
+            toDate,
+            pageNumber,
+            pageSize);
 
         if (!result.Success)
         {
@@ -46,14 +49,18 @@ public class AuditController : ApiControllerBase
         [FromQuery] int? patientId,
         [FromQuery] int? userId,
         [FromQuery] DateTime? fromDate,
-        [FromQuery] DateTime? toDate)
+        [FromQuery] DateTime? toDate,
+        [FromQuery] int pageNumber = 1,
+        [FromQuery] int pageSize = 20)
     {
         var result = await _auditService.GetPhiAccessLogsAsync(
             GetCurrentHospitalIdOrDefault(),
             patientId,
             userId,
             fromDate,
-            toDate);
+            toDate,
+            pageNumber,
+            pageSize);
 
         if (!result.Success)
         {

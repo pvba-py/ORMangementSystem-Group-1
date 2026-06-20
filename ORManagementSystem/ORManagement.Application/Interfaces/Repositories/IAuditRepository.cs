@@ -1,25 +1,31 @@
 ﻿using ORManagement.Application.DTOs.Audit;
+using ORManagement.Application.DTOs.Shared;
 
 namespace ORManagement.Application.Interfaces.Repositories;
 
 public interface IAuditRepository
 {
     Task AddAuditLogAsync(CreateAuditLogDto request);
+
     Task AddPhiAccessLogAsync(CreatePhiAccessLogDto request);
 
-    Task<List<AuditLogDto>> GetAuditLogsAsync(
+    Task AddPhiAccessLogsBulkAsync(List<CreatePhiAccessLogDto> requests);
+
+    Task<PagedResultDto<AuditLogDto>> GetAuditLogsAsync(
         int hospitalId,
         string? entity,
         string? action,
         DateTime? fromDate,
-        DateTime? toDate);
+        DateTime? toDate,
+        int pageNumber,
+        int pageSize);
 
-    Task<List<PhiAccessLogDto>> GetPhiAccessLogsAsync(
+    Task<PagedResultDto<PhiAccessLogDto>> GetPhiAccessLogsAsync(
         int hospitalId,
         int? patientId,
         int? userId,
         DateTime? fromDate,
-        DateTime? toDate);
-
-    Task AddPhiAccessLogsBulkAsync(List<CreatePhiAccessLogDto> requests);
+        DateTime? toDate,
+        int pageNumber,
+        int pageSize);
 }

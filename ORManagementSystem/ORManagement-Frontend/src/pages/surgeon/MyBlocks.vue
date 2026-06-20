@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue'
+import AppModal from '../../components/common/AppModal.vue'
 import PageHeader from '../../components/common/PageHeader.vue'
 import LoadingSpinner from '../../components/common/LoadingSpinner.vue'
 import EmptyState from '../../components/common/EmptyState.vue'
@@ -140,44 +141,69 @@ onMounted(loadBlocks)
       </div>
     </div>
 
-    <div v-if="selectedBlock" class="page-card mt-4">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="mb-0">Release Block #{{ selectedBlock.blockId }}</h5>
-        <button class="btn btn-sm btn-outline-secondary" @click="selectedBlock = null">
-          Close
-        </button>
-      </div>
+    <AppModal
+  :show="!!selectedBlock"
+  :title="selectedBlock ? `Release Block #${selectedBlock.blockId}` : 'Release Block'"
+  size="lg"
+  @close="selectedBlock = null"
+>
+  <div v-if="selectedBlock" class="alert alert-info">
+    Block time:
+    <strong>
+      {{ formatTime(selectedBlock.startTime) }} - {{ formatTime(selectedBlock.endTime) }}
+    </strong>
+    on
+    <strong>{{ formatDate(selectedBlock.blockDate) }}</strong>
+  </div>
 
-      <div class="alert alert-info">
-        Block time:
-        <strong>{{ formatTime(selectedBlock.startTime) }} - {{ formatTime(selectedBlock.endTime) }}</strong>
-        on
-        <strong>{{ formatDate(selectedBlock.blockDate) }}</strong>
-      </div>
-
-      <div class="row g-3">
-        <div class="col-md-3">
-          <label class="form-label">Release Start</label>
-          <input v-model="releaseForm.startTime" type="time" class="form-control" />
-        </div>
-
-        <div class="col-md-3">
-          <label class="form-label">Release End</label>
-          <input v-model="releaseForm.endTime" type="time" class="form-control" />
-        </div>
-
-        <div class="col-md-6">
-          <label class="form-label">Remarks</label>
-          <input v-model="releaseForm.remarks" class="form-control" />
-        </div>
-      </div>
-
-      <div class="text-end mt-3">
-        <button class="btn btn-primary" :disabled="releasing" @click="submitRelease">
-          <span v-if="releasing" class="spinner-border spinner-border-sm me-2"></span>
-          Release
-        </button>
-      </div>
+  <div class="row g-3">
+    <div class="col-md-4">
+      <label class="form-label">Release Start</label>
+      <input
+        v-model="releaseForm.startTime"
+        type="time"
+        class="form-control"
+      />
     </div>
+
+    <div class="col-md-4">
+      <label class="form-label">Release End</label>
+      <input
+        v-model="releaseForm.endTime"
+        type="time"
+        class="form-control"
+      />
+    </div>
+
+    <div class="col-md-12">
+      <label class="form-label">Remarks</label>
+      <input
+        v-model="releaseForm.remarks"
+        class="form-control"
+      />
+    </div>
+  </div>
+
+  <template #footer>
+    <button
+      class="btn btn-outline-secondary"
+      @click="selectedBlock = null"
+    >
+      Cancel
+    </button>
+
+    <button
+      class="btn btn-primary"
+      :disabled="releasing"
+      @click="submitRelease"
+    >
+      <span
+        v-if="releasing"
+        class="spinner-border spinner-border-sm me-2"
+      ></span>
+      Release
+    </button>
+  </template>
+</AppModal>
   </div>
 </template>

@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue'
+import AppModal from '../../components/common/AppModal.vue'
 import PageHeader from '../../components/common/PageHeader.vue'
 import LoadingSpinner from '../../components/common/LoadingSpinner.vue'
 import EmptyState from '../../components/common/EmptyState.vue'
@@ -72,6 +73,21 @@ const canCancel = (request) => {
 
 const submitUpdate = async () => {
   if (!selectedRequest.value) return
+
+if (!editForm.value.preferredDate) {
+  showToast('Preferred date is required.', 'warning')
+  return
+}
+
+if (!editForm.value.surgeryType.trim()) {
+  showToast('Surgery type is required.', 'warning')
+  return
+}
+
+if (!editForm.value.estimatedDurationMin || editForm.value.estimatedDurationMin <= 0) {
+  showToast('Duration must be greater than zero.', 'warning')
+  return
+}
 
   saving.value = true
 
@@ -211,80 +227,109 @@ onMounted(loadRequests)
     </div>
 
     <!-- Edit Modal-like card -->
-    <div v-if="selectedRequest" class="page-card mt-4">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="mb-0">Edit Request #{{ selectedRequest.requestId }}</h5>
-        <button class="btn btn-sm btn-outline-secondary" @click="selectedRequest = null">
-          Close
-        </button>
-      </div>
-
-      <div class="row g-3">
-        <div class="col-md-4">
-          <label class="form-label">Preferred Date</label>
-          <input v-model="editForm.preferredDate" type="date" class="form-control" />
-        </div>
-
-        <div class="col-md-4">
-          <label class="form-label">Preferred Quarter</label>
-          <select v-model="editForm.preferredQuarter" class="form-select">
-            <option value="Q1">Q1</option>
-            <option value="Q2">Q2</option>
-            <option value="Flexible">Flexible</option>
-          </select>
-        </div>
-
-        <div class="col-md-4">
-          <label class="form-label">Duration Minutes</label>
-          <input v-model.number="editForm.estimatedDurationMin" type="number" class="form-control" />
-        </div>
-
-        <div class="col-md-4">
-          <label class="form-label">Surgery Type</label>
-          <input v-model="editForm.surgeryType" class="form-control" />
-        </div>
-
-        <div class="col-md-4">
-          <label class="form-label">Priority</label>
-          <select v-model="editForm.priority" class="form-select">
-            <option value="Elective">Elective</option>
-            <option value="Urgent">Urgent</option>
-            <option value="Emergency">Emergency</option>
-          </select>
-        </div>
-
-        <div class="col-md-4">
-          <label class="form-label">Patient Readiness</label>
-          <select v-model="editForm.patientReadiness" class="form-select">
-            <option value="Ready">Ready</option>
-            <option value="PendingClearance">Pending Clearance</option>
-            <option value="NotReady">Not Ready</option>
-          </select>
-        </div>
-
-        <div class="col-md-4">
-          <label class="form-label">Availability</label>
-          <select v-model.number="editForm.availableDaysMask" class="form-select">
-            <option :value="31">Mon-Fri</option>
-            <option :value="3">Mon-Tue</option>
-            <option :value="1">Monday Only</option>
-            <option :value="4">Wednesday Only</option>
-            <option :value="28">Wed-Fri</option>
-          </select>
-        </div>
-
-        <div class="col-md-8">
-          <label class="form-label">Remarks</label>
-          <input v-model="editForm.remarks" class="form-control" />
-        </div>
-      </div>
-
-      <div class="text-end mt-3">
-        <button class="btn btn-primary" :disabled="saving" @click="submitUpdate">
-          <span v-if="saving" class="spinner-border spinner-border-sm me-2"></span>
-          Save Changes
-        </button>
-      </div>
+    <AppModal
+  :show="!!selectedRequest"
+  :title="selectedRequest ? `Edit Request #${selectedRequest.requestId}` : 'Edit Request'"
+  size="lg"
+  @close="selectedRequest = null"
+>
+  <div class="row g-3">
+    <div class="col-md-4">
+      <label class="form-label">Preferred Date</label>
+      <input
+        v-model="editForm.preferredDate"
+        type="date"
+        class="form-control"
+      />
     </div>
+
+    <div class="col-md-4">
+      <label class="form-label">Preferred Quarter</label>
+      <select v-model="editForm.preferredQuarter" class="form-select">
+        <option value="Q1">Q1</option>
+        <option value="Q2">Q2</option>
+        <option value="Flexible">Flexible</option>
+      </select>
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label">Duration Minutes</label>
+      <input
+        v-model.number="editForm.estimatedDurationMin"
+        type="number"
+        class="form-control"
+        min="1"
+      />
+    </div>
+
+    <div class="col-md-6">
+      <label class="form-label">Surgery Type</label>
+      <input
+        v-model="editForm.surgeryType"
+        class="form-control"
+        placeholder="e.g. Knee Replacement"
+      />
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label">Priority</label>
+      <select v-model="editForm.priority" class="form-select">
+        <option value="Elective">Elective</option>
+        <option value="Urgent">Urgent</option>
+        <option value="Emergency">Emergency</option>
+      </select>
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label">Patient Readiness</label>
+      <select v-model="editForm.patientReadiness" class="form-select">
+        <option value="Ready">Ready</option>
+        <option value="PendingClearance">Pending Clearance</option>
+        <option value="NotReady">Not Ready</option>
+      </select>
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label">Availability</label>
+      <select v-model.number="editForm.availableDaysMask" class="form-select">
+        <option :value="31">Mon-Fri</option>
+        <option :value="3">Mon-Tue</option>
+        <option :value="1">Monday Only</option>
+        <option :value="4">Wednesday Only</option>
+        <option :value="28">Wed-Fri</option>
+      </select>
+    </div>
+
+    <div class="col-md-8">
+      <label class="form-label">Remarks</label>
+      <input
+        v-model="editForm.remarks"
+        class="form-control"
+        placeholder="Optional notes"
+      />
+    </div>
+  </div>
+
+  <template #footer>
+    <button
+      class="btn btn-outline-secondary"
+      @click="selectedRequest = null"
+    >
+      Cancel
+    </button>
+
+    <button
+      class="btn btn-primary"
+      :disabled="saving"
+      @click="submitUpdate"
+    >
+      <span
+        v-if="saving"
+        class="spinner-border spinner-border-sm me-2"
+      ></span>
+      Save Changes
+    </button>
+  </template>
+</AppModal>
   </div>
 </template>

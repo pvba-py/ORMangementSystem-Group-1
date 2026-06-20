@@ -45,37 +45,42 @@ public class MasterDataService : IMasterDataService
     }
 
     public async Task<ServiceResultDto<List<PatientLookupDto>>> GetPatientsAsync(
-        int hospitalId,
-        int userId,
-        string roleName,
-        string? search,
-        string? ipAddress,
-        string? userAgent)
+    int hospitalId,
+    int userId,
+    string roleName,
+    string? search,
+    string? ipAddress,
+    string? userAgent)
     {
         var patients = await _masterDataRepository.GetPatientsAsync(hospitalId, search);
 
-        var phiLogs = patients.Select(patient => new CreatePhiAccessLogDto
+        await _auditRepository.AddAuditLogAsync(new CreateAuditLogDto
         {
             HospitalId = hospitalId,
             UserId = userId,
-            PatientId = patient.PatientId,
-            AccessType = string.IsNullOrWhiteSpace(search) ? "View" : "Search",
-            Context = string.IsNullOrWhiteSpace(search)
-        ? "Patient list viewed"
-        : $"Patient search performed. Search term: {search}",
+            RoleName = roleName,
+            Action = string.IsNullOrWhiteSpace(search)
+                ? "PatientListViewed"
+                : "PatientSearchPerformed",
+            Entity = "Patients",
+            EntityId = null,
+            OldValue = null,
+            NewValue = patients.Count.ToString(),
+            Remarks = string.IsNullOrWhiteSpace(search)
+                ? $"Patient list viewed. Returned {patients.Count} records."
+                : $"Patient search performed. Search term: {search}. Returned {patients.Count} records.",
             IpAddress = ipAddress,
             UserAgent = userAgent
-        }).ToList();
-
-        await _auditRepository.AddPhiAccessLogsBulkAsync(phiLogs);
+        });
 
         _logger.LogInformation(
-            "Patient list accessed by UserId {UserId}. Count: {Count}",
+            "Patient list/search accessed by UserId {UserId}. Count: {Count}",
             userId,
             patients.Count);
 
         return ServiceResultDto<List<PatientLookupDto>>.Ok(patients);
     }
+
 
     public async Task<ServiceResultDto<PatientLookupDto>> GetPatientByIdAsync(
         int hospitalId,

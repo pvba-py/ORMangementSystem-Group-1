@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue'
+import AppModal from '../../components/common/AppModal.vue'
 import PageHeader from '../../components/common/PageHeader.vue'
 import LoadingSpinner from '../../components/common/LoadingSpinner.vue'
 import EmptyState from '../../components/common/EmptyState.vue'
@@ -231,89 +232,85 @@ onMounted(loadRequests)
       </div>
     </div>
 
-    <div v-if="selectedRequest" class="page-card mt-4">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="mb-0">
-          Request #{{ selectedRequest.requestId }}
-        </h5>
+    <AppModal
+  :show="!!selectedRequest"
+  :title="selectedRequest ? `Request #${selectedRequest.requestId}` : 'Request'"
+  size="xl"
+  @close="closePanel"
+>
+  <div v-if="selectedRequest" class="row g-4">
+    <div class="col-lg-7">
+      <h6 class="mb-3">Update Status</h6>
 
-        <button class="btn btn-sm btn-outline-secondary" @click="closePanel">
-          Close
-        </button>
-      </div>
-
-      <div class="row g-4">
-        <div class="col-lg-7">
-          <h6 class="mb-3">Update Status</h6>
-
-          <div class="row g-3">
-            <div class="col-md-4">
-              <label class="form-label">Status</label>
-              <select v-model="statusForm.status" class="form-select">
-                <option value="Approved">Approved</option>
-                <option value="Modified">Modified</option>
-                <option value="Waitlisted">Waitlisted</option>
-                <option value="Rejected">Rejected</option>
-                <option value="Scheduled">Scheduled</option>
-              </select>
-            </div>
-
-            <div class="col-md-8">
-              <label class="form-label">Scheduler Remarks</label>
-              <input
-                v-model="statusForm.schedulerRemarks"
-                class="form-control"
-                placeholder="Remarks visible to surgeon"
-              />
-            </div>
-          </div>
-
-          <div class="text-end mt-3">
-            <button
-              class="btn btn-primary"
-              :disabled="saving"
-              @click="submitStatusUpdate"
-            >
-              <span
-                v-if="saving"
-                class="spinner-border spinner-border-sm me-2"
-              ></span>
-              Save Status
-            </button>
-          </div>
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Status</label>
+          <select v-model="statusForm.status" class="form-select">
+            <option value="Approved">Approved</option>
+            <option value="Modified">Modified</option>
+            <option value="Waitlisted">Waitlisted</option>
+            <option value="Rejected">Rejected</option>
+            <option value="Scheduled">Scheduled</option>
+          </select>
         </div>
 
-        <div class="col-lg-5">
-          <h6 class="mb-3">Request Score</h6>
-
-          <div v-if="scoreResult" class="score-box">
-            <div class="d-flex justify-content-between mb-2">
-              <span>Rank Score</span>
-              <strong>{{ scoreResult.rankScore ?? scoreResult.score ?? '-' }}</strong>
-            </div>
-
-            <div class="d-flex justify-content-between mb-2">
-              <span>Priority</span>
-              <strong>{{ selectedRequest.priority }}</strong>
-            </div>
-
-            <div class="d-flex justify-content-between mb-2">
-              <span>Cycles Waited</span>
-              <strong>{{ selectedRequest.cyclesWaited }}</strong>
-            </div>
-
-            <div class="d-flex justify-content-between">
-              <span>Availability</span>
-              <strong>{{ selectedRequest.availableDaysDisplay }}</strong>
-            </div>
-          </div>
-
-          <div v-else class="text-muted small">
-            Click <strong>Score</strong> on a request to view score details.
-          </div>
+        <div class="col-md-8">
+          <label class="form-label">Scheduler Remarks</label>
+          <input
+            v-model="statusForm.schedulerRemarks"
+            class="form-control"
+            placeholder="Remarks visible to surgeon"
+          />
         </div>
       </div>
     </div>
+
+    <div class="col-lg-5">
+      <h6 class="mb-3">Request Score</h6>
+
+      <div v-if="scoreResult" class="score-box">
+        <div class="d-flex justify-content-between mb-2">
+          <span>Rank Score</span>
+          <strong>{{ scoreResult.rankScore ?? scoreResult.score ?? '-' }}</strong>
+        </div>
+
+        <div class="d-flex justify-content-between mb-2">
+          <span>Priority</span>
+          <strong>{{ selectedRequest.priority }}</strong>
+        </div>
+
+        <div class="d-flex justify-content-between mb-2">
+          <span>Cycles Waited</span>
+          <strong>{{ selectedRequest.cyclesWaited }}</strong>
+        </div>
+
+        <div class="d-flex justify-content-between">
+          <span>Availability</span>
+          <strong>{{ selectedRequest.availableDaysDisplay }}</strong>
+        </div>
+      </div>
+
+      <div v-else class="text-muted small">
+        Score was not loaded for this request. Click Score from the table to view score details.
+      </div>
+    </div>
+  </div>
+
+  <template #footer>
+    <button class="btn btn-outline-secondary" @click="closePanel">
+      Cancel
+    </button>
+
+    <button
+      class="btn btn-primary"
+      :disabled="saving"
+      @click="submitStatusUpdate"
+    >
+      <span v-if="saving" class="spinner-border spinner-border-sm me-2"></span>
+      Save Status
+    </button>
+  </template>
+</AppModal>
   </div>
 </template>
 

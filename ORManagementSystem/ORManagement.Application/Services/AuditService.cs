@@ -19,16 +19,18 @@ public class AuditService : IAuditService
         _logger = logger;
     }
 
-    public async Task<ServiceResultDto<List<AuditLogDto>>> GetAuditLogsAsync(
-        int hospitalId,
-        string? entity,
-        string? action,
-        DateTime? fromDate,
-        DateTime? toDate)
+    public async Task<ServiceResultDto<PagedResultDto<AuditLogDto>>> GetAuditLogsAsync(
+    int hospitalId,
+    string? entity,
+    string? action,
+    DateTime? fromDate,
+    DateTime? toDate,
+    int pageNumber,
+    int pageSize)
     {
         if (fromDate.HasValue && toDate.HasValue && fromDate.Value.Date > toDate.Value.Date)
         {
-            return ServiceResultDto<List<AuditLogDto>>.Fail(
+            return ServiceResultDto<PagedResultDto<AuditLogDto>>.Fail(
                 "INVALID_DATE_RANGE",
                 "From date cannot be after To date.");
         }
@@ -38,21 +40,25 @@ public class AuditService : IAuditService
             entity,
             action,
             fromDate,
-            toDate);
+            toDate,
+            pageNumber,
+            pageSize);
 
-        return ServiceResultDto<List<AuditLogDto>>.Ok(logs);
+        return ServiceResultDto<PagedResultDto<AuditLogDto>>.Ok(logs);
     }
 
-    public async Task<ServiceResultDto<List<PhiAccessLogDto>>> GetPhiAccessLogsAsync(
+    public async Task<ServiceResultDto<PagedResultDto<PhiAccessLogDto>>> GetPhiAccessLogsAsync(
         int hospitalId,
         int? patientId,
         int? userId,
         DateTime? fromDate,
-        DateTime? toDate)
+        DateTime? toDate,
+        int pageNumber,
+        int pageSize)
     {
         if (fromDate.HasValue && toDate.HasValue && fromDate.Value.Date > toDate.Value.Date)
         {
-            return ServiceResultDto<List<PhiAccessLogDto>>.Fail(
+            return ServiceResultDto<PagedResultDto<PhiAccessLogDto>>.Fail(
                 "INVALID_DATE_RANGE",
                 "From date cannot be after To date.");
         }
@@ -62,8 +68,10 @@ public class AuditService : IAuditService
             patientId,
             userId,
             fromDate,
-            toDate);
+            toDate,
+            pageNumber,
+            pageSize);
 
-        return ServiceResultDto<List<PhiAccessLogDto>>.Ok(logs);
+        return ServiceResultDto<PagedResultDto<PhiAccessLogDto>>.Ok(logs);
     }
 }
