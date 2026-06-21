@@ -34,6 +34,26 @@ public class RoomsController : ApiControllerBase
 
         return Ok(result.Data);
     }
+    [HttpGet("rooms/paged")]
+    [Authorize(Roles = "ORScheduler")]
+    public async Task<IActionResult> GetRoomsPaged(
+    [FromQuery] bool? isActive,
+    [FromQuery] int pageNumber = 1,
+    [FromQuery] int pageSize = 10)
+    {
+        var result = await _roomService.GetRoomsPagedAsync(
+            GetCurrentHospitalIdOrDefault(),
+            isActive,
+            pageNumber,
+            pageSize);
+
+        if (!result.Success)
+        {
+            return MapError(result);
+        }
+
+        return Ok(result.Data);
+    }
 
     [HttpPost("rooms")]
     [Authorize(Roles = "ORScheduler")]

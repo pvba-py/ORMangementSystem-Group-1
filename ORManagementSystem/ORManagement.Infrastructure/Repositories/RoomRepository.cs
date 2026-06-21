@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using ORManagement.Application.DTOs.Rooms;
+using ORManagement.Application.DTOs.Shared;
 using ORManagement.Application.Interfaces.Repositories;
 using ORManagement.Infrastructure.Data;
 using ORManagement.Infrastructure.Data.Entities;
@@ -19,7 +20,7 @@ public class RoomRepository : IRoomRepository
     {
         return await _dbContext.OperatingRooms
             .Where(room => room.HospitalId == hospitalId)
-            .OrderBy(room => room.RoomName)
+            .OrderBy(room => room.ORRoomId)
             .Select(room => new RoomDto
             {
                 ORRoomId = room.ORRoomId,
@@ -32,6 +33,60 @@ public class RoomRepository : IRoomRepository
             .ToListAsync();
     }
 
+    public async Task<PagedResultDto<RoomDto>> GetRoomsPagedAsync(
+    int hospitalId,
+    bool? isActive,
+    int pageNumber,
+    int pageSize)
+    {
+        if (pageNumber <= 0)
+        {
+            pageNumber = 1;
+        }
+
+        if (pageSize <= 0)
+        {
+            pageSize = 10;
+        }
+
+        if (pageSize > 100)
+        {
+            pageSize = 100;
+        }
+
+        var query = _dbContext.OperatingRooms
+            .Where(room => room.HospitalId == hospitalId);
+
+        if (isActive.HasValue)
+        {
+            query = query.Where(room => room.IsActive == isActive.Value);
+        }
+
+        var totalCount = await query.CountAsync();
+
+        var items = await query
+            .OrderBy(room => room.ORRoomId)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .Select(room => new RoomDto
+            {
+                ORRoomId = room.ORRoomId,
+                HospitalId = room.HospitalId,
+                RoomName = room.RoomName,
+                RoomType = room.RoomType,
+                Location = room.Location,
+                IsActive = room.IsActive
+            })
+            .ToListAsync();
+
+        return new PagedResultDto<RoomDto>
+        {
+            Items = items,
+            PageNumber = pageNumber,
+            PageSize = pageSize,
+            TotalCount = totalCount
+        };
+    }
     public async Task<RoomDto?> GetRoomByIdAsync(int hospitalId, int roomId)
     {
         return await _dbContext.OperatingRooms

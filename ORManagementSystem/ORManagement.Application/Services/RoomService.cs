@@ -42,6 +42,20 @@ public class RoomService : IRoomService
         return ServiceResultDto<RoomDto>.Ok(room);
     }
 
+    public async Task<ServiceResultDto<PagedResultDto<RoomDto>>> GetRoomsPagedAsync(
+    int hospitalId,
+    bool? isActive,
+    int pageNumber,
+    int pageSize)
+    {
+        var rooms = await _roomRepository.GetRoomsPagedAsync(
+            hospitalId,
+            isActive,
+            pageNumber,
+            pageSize);
+
+        return ServiceResultDto<PagedResultDto<RoomDto>>.Ok(rooms);
+    }
     public async Task<ServiceResultDto<int>> CreateRoomAsync(
         int hospitalId,
         int userId,

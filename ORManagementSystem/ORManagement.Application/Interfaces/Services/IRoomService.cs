@@ -6,6 +6,13 @@ namespace ORManagement.Application.Interfaces.Services;
 public interface IRoomService
 {
     Task<ServiceResultDto<List<RoomDto>>> GetRoomsAsync(int hospitalId);
+
+    Task<ServiceResultDto<PagedResultDto<RoomDto>>> GetRoomsPagedAsync(
+            int hospitalId,
+            bool? isActive,
+            int pageNumber,
+            int pageSize);
+
     Task<ServiceResultDto<RoomDto>> GetRoomByIdAsync(int hospitalId, int roomId);
 
     Task<ServiceResultDto<int>> CreateRoomAsync(

@@ -4,6 +4,11 @@ export const getRooms = () => {
   return api.get('/rooms')
 }
 
+
+export const getRoomsPaged = (params = {}) => {
+  return api.get('/rooms/paged', { params })
+}
+
 export const createRoom = (payload) => {
   return api.post('/rooms', payload)
 }
