@@ -548,4 +548,80 @@ public class BlockService : IBlockService
             _ => 1
         };
     }
+    public async Task<ServiceResultDto<int>> CreateBlockAllocationAsync(
+    int hospitalId,
+    int userId,
+    string roleName,
+    CreateBlockAllocationDto request,
+    string? ipAddress,
+    string? userAgent)
+    {
+        request.BlockType = NormalizeBlockType(request.BlockType);
+
+        if (!AllowedBlockTypes.Contains(request.BlockType))
+        {
+            return ServiceResultDto<int>.Fail(
+                "INVALID_BLOCK_TYPE",
+                "Invalid block type.");
+        }
+
+        if (request.StartTime >= request.EndTime)
+        {
+            return ServiceResultDto<int>.Fail(
+                "INVALID_BLOCK_TIME",
+                "Block start time must be before end time.");
+        }
+
+        if (request.BlockType == "Recurring" && request.SurgeonId is null)
+        {
+            return ServiceResultDto<int>.Fail(
+                "SURGEON_REQUIRED_FOR_RECURRING_BLOCK",
+                "Recurring blocks require a surgeon.");
+        }
+
+        if (request.BlockType == "Open" || request.BlockType == "Emergency")
+        {
+            request.SurgeonId = null;
+        }
+
+        var blockId = await _blockRepository.CreateBlockAllocationAsync(
+            hospitalId,
+            request);
+
+        await _auditRepository.AddAuditLogAsync(new CreateAuditLogDto
+        {
+            HospitalId = hospitalId,
+            UserId = userId,
+            RoleName = roleName,
+            Action = "BlockCreated",
+            Entity = "BlockAllocations",
+            EntityId = blockId,
+            NewValue = $"{request.BlockType}|{request.BlockDate:yyyy-MM-dd}|{request.StartTime}-{request.EndTime}",
+            Remarks = "One-time block created.",
+            IpAddress = ipAddress,
+            UserAgent = userAgent
+        });
+
+        return ServiceResultDto<int>.Ok(
+            blockId,
+            "Block created successfully.");
+    }
+    private static string NormalizeBlockType(string blockType)
+    {
+        return blockType.Trim() switch
+        {
+            "Recurring" => "Recurring",
+            "Open" => "Open",
+            "Emergency" => "Emergency",
+            "AdHoc" => "AdHoc",
+            _ => blockType.Trim()
+        };
+    }
+    private static readonly HashSet<string> AllowedBlockTypes = new()
+{
+    "Recurring",
+    "Open",
+    "Emergency",
+    "AdHoc"
+};
 }

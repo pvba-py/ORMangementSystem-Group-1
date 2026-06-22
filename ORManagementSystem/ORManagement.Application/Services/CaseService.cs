@@ -41,7 +41,45 @@ public class CaseService : ICaseService
         _availabilityWindowEngine = availabilityWindowEngine;
         _logger = logger;
     }
+    private static ServiceResultDto ValidateBlockTypeForRequest(
+    BlockBoundaryDto block,
+    int requestSurgeonId,
+    string requestPriority)
+    {
+        if (block.BlockType == "Recurring")
+        {
+            if (block.SurgeonId != requestSurgeonId)
+            {
+                return ServiceResultDto.Fail(
+                    "BLOCK_SURGEON_MISMATCH",
+                    "Recurring block can only be used for the assigned surgeon.");
+            }
+        }
 
+        if (block.BlockType == "Emergency")
+        {
+            if (requestPriority != "Emergency")
+            {
+                return ServiceResultDto.Fail(
+                    "EMERGENCY_BLOCK_REQUIRED_PRIORITY",
+                    "Emergency blocks can only be used for emergency requests.");
+            }
+        }
+
+        if (block.BlockType == "AdHoc")
+        {
+            if (block.SurgeonId.HasValue &&
+                block.SurgeonId.Value != requestSurgeonId)
+            {
+                return ServiceResultDto.Fail(
+                    "BLOCK_SURGEON_MISMATCH",
+                    "This ad-hoc block is assigned to a different surgeon.");
+            }
+        }
+
+        // Open blocks allow any approved/modified request if normal validations pass.
+        return ServiceResultDto.Ok();
+    }
     public async Task<ServiceResultDto<List<SurgicalCaseDto>>> GetCasesAsync(
     int hospitalId,
     int userId,
@@ -123,49 +161,51 @@ public class CaseService : ICaseService
     }
 
     public async Task<ServiceResultDto<int>> CreateCaseAsync(
-        int hospitalId,
-        int userId,
-        string roleName,
-        CreateCaseRequestDto request,
-        string? ipAddress,
-        string? userAgent)
+    int hospitalId,
+    int userId,
+    string roleName,
+    CreateCaseRequestDto request,
+    string? ipAddress,
+    string? userAgent)
     {
         if (request.ScheduledEnd <= request.ScheduledStart)
         {
-            return ServiceResultDto<int>.Fail("INVALID_CASE_TIME", "Scheduled end must be after scheduled start.");
+            return ServiceResultDto<int>.Fail(
+                "INVALID_CASE_TIME",
+                "Scheduled end must be after scheduled start.");
         }
 
-        var orRequest = await _caseRepository.GetRequestForSchedulingAsync(hospitalId, request.RequestId);
+        var orRequest = await _caseRepository.GetRequestForSchedulingAsync(
+            hospitalId,
+            request.RequestId);
 
         if (orRequest is null)
         {
-            return ServiceResultDto<int>.Fail("REQUEST_NOT_FOUND", "Request was not found.");
+            return ServiceResultDto<int>.Fail(
+                "REQUEST_NOT_FOUND",
+                "Request was not found.");
         }
 
-        if (orRequest.RequestStatus != "Approved" && orRequest.RequestStatus != "Modified")
+        if (orRequest.RequestStatus != "Approved" &&
+            orRequest.RequestStatus != "Modified")
         {
-            return ServiceResultDto<int>.Fail("INVALID_REQUEST_STATUS", "Only approved or modified requests can be scheduled.");
+            return ServiceResultDto<int>.Fail(
+                "INVALID_REQUEST_STATUS",
+                "Only approved or modified requests can be scheduled.");
         }
 
-        if (!_availabilityWindowEngine.IsDateAllowed(request.ScheduledStart.Date, orRequest.AvailableDaysMask))
+        if (!_availabilityWindowEngine.IsDateAllowed(
+                request.ScheduledStart.Date,
+                orRequest.AvailableDaysMask))
         {
             return ServiceResultDto<int>.Fail(
                 "DATE_OUTSIDE_AVAILABILITY",
                 "Scheduled date is outside surgeon availability.");
         }
 
-        var blockValid = await _caseRepository.BlockExistsForRequestAsync(
-            hospitalId,
-            request.BlockId,
-            orRequest.SurgeonId);
-
-        if (!blockValid)
-        {
-            return ServiceResultDto<int>.Fail("INVALID_BLOCK", "Selected block is invalid for this request.");
-        }
         var blockBoundary = await _caseRepository.GetBlockBoundaryAsync(
-    hospitalId,
-    request.BlockId);
+            hospitalId,
+            request.BlockId);
 
         if (blockBoundary is null)
         {
@@ -186,6 +226,18 @@ public class CaseService : ICaseService
                 boundaryValidation.Message!);
         }
 
+        var blockTypeValidation = ValidateBlockTypeForRequest(
+            blockBoundary,
+            orRequest.SurgeonId,
+            orRequest.Priority);
+
+        if (!blockTypeValidation.Success)
+        {
+            return ServiceResultDto<int>.Fail(
+                blockTypeValidation.ErrorCode!,
+                blockTypeValidation.Message!);
+        }
+
         var conflictExists = await _caseRepository.HasCaseConflictAsync(
             hospitalId,
             request.BlockId,
@@ -194,14 +246,20 @@ public class CaseService : ICaseService
 
         if (conflictExists)
         {
-            return ServiceResultDto<int>.Fail("CASE_CONFLICT", "Selected time conflicts with another surgical case.");
+            return ServiceResultDto<int>.Fail(
+                "CASE_CONFLICT",
+                "Selected time conflicts with another surgical case.");
         }
 
-        var roomId = await _caseRepository.GetBlockRoomIdAsync(hospitalId, request.BlockId);
+        var roomId = await _caseRepository.GetBlockRoomIdAsync(
+            hospitalId,
+            request.BlockId);
 
         if (roomId is null)
         {
-            return ServiceResultDto<int>.Fail("ROOM_NOT_FOUND", "Room was not found for selected block.");
+            return ServiceResultDto<int>.Fail(
+                "ROOM_NOT_FOUND",
+                "Room was not found for selected block.");
         }
 
         var surgeryId = await _caseRepository.CreateCaseAsync(
@@ -214,7 +272,10 @@ public class CaseService : ICaseService
             request.ScheduledEnd,
             userId);
 
-        await _caseRepository.MarkRequestScheduledAsync(hospitalId, request.RequestId, userId);
+        await _caseRepository.MarkRequestScheduledAsync(
+            hospitalId,
+            request.RequestId,
+            userId);
 
         await _auditRepository.AddAuditLogAsync(new CreateAuditLogDto
         {
@@ -230,123 +291,18 @@ public class CaseService : ICaseService
             UserAgent = userAgent
         });
 
-        _logger.LogInformation("Surgical case created. SurgeryId: {SurgeryId}, RequestId: {RequestId}", surgeryId, request.RequestId);
-
-        return ServiceResultDto<int>.Ok(surgeryId, "Surgical case created successfully.");
-    }
-
-    public async Task<ServiceResultDto> UpdateCaseAsync(
-    int hospitalId,
-    int surgeryId,
-    int userId,
-    string roleName,
-    UpdateCaseRequestDto request,
-    string? ipAddress,
-    string? userAgent)
-    {
-        if (request.ScheduledEnd <= request.ScheduledStart)
-        {
-            return ServiceResultDto.Fail(
-                "INVALID_CASE_TIME",
-                "Scheduled end must be after scheduled start.");
-        }
-
-        var existingCase = await _caseRepository.GetCaseByIdAsync(
-            hospitalId,
-            surgeryId);
-
-        if (existingCase is null)
-        {
-            return ServiceResultDto.Fail(
-                "CASE_NOT_FOUND",
-                "Surgical case was not found.");
-        }
-        var blockBoundary = await _caseRepository.GetBlockBoundaryAsync(
-    hospitalId,
-    existingCase.BlockId);
-
-        if (blockBoundary is null)
-        {
-            return ServiceResultDto.Fail(
-                "INVALID_BLOCK",
-                "Selected block was not found.");
-        }
-
-        var boundaryValidation = ValidateCaseWithinBlock(
-            blockBoundary,
-            request.ScheduledStart,
-            request.ScheduledEnd);
-
-        if (!boundaryValidation.Success)
-        {
-            return boundaryValidation;
-        }
-
-        var orRequest = await _caseRepository.GetRequestForSchedulingAsync(
-            hospitalId,
-            existingCase.RequestId);
-
-        if (orRequest is null)
-        {
-            return ServiceResultDto.Fail(
-                "REQUEST_NOT_FOUND",
-                "Related OR request was not found.");
-        }
-
-        if (!_availabilityWindowEngine.IsDateAllowed(
-                request.ScheduledStart.Date,
-                orRequest.AvailableDaysMask))
-        {
-            return ServiceResultDto.Fail(
-                "DATE_OUTSIDE_AVAILABILITY",
-                "Scheduled date is outside surgeon availability.");
-        }
-
-        var conflictExists = await _caseRepository.HasCaseConflictAsync(
-            hospitalId,
-            existingCase.BlockId,
-            request.ScheduledStart,
-            request.ScheduledEnd,
-            surgeryId);
-
-        if (conflictExists)
-        {
-            return ServiceResultDto.Fail(
-                "CASE_CONFLICT",
-                "Updated time conflicts with another surgical case.");
-        }
-
-        var updated = await _caseRepository.UpdateCaseAsync(
-            hospitalId,
+        _logger.LogInformation(
+            "Surgical case created. SurgeryId: {SurgeryId}, RequestId: {RequestId}",
             surgeryId,
-            request.ScheduledStart,
-            request.ScheduledEnd,
-            userId);
+            request.RequestId);
 
-        if (!updated)
-        {
-            return ServiceResultDto.Fail(
-                "CASE_UPDATE_FAILED",
-                "Only scheduled cases can be updated.");
-        }
-
-        await _auditRepository.AddAuditLogAsync(new CreateAuditLogDto
-        {
-            HospitalId = hospitalId,
-            UserId = userId,
-            RoleName = roleName,
-            Action = "CaseUpdated",
-            Entity = "SurgicalCases",
-            EntityId = surgeryId,
-            OldValue = $"{existingCase.ScheduledStart} - {existingCase.ScheduledEnd}",
-            NewValue = $"{request.ScheduledStart} - {request.ScheduledEnd}",
-            Remarks = "Surgical case schedule updated.",
-            IpAddress = ipAddress,
-            UserAgent = userAgent
-        });
-
-        return ServiceResultDto.Ok("Surgical case updated successfully.");
+        return ServiceResultDto<int>.Ok(
+            surgeryId,
+            "Surgical case created successfully.");
     }
+
+
+
 
     public async Task<ServiceResultDto> UpdateCaseStatusAsync(
         int hospitalId,
@@ -408,6 +364,129 @@ public class CaseService : ICaseService
         });
 
         return ServiceResultDto.Ok($"Case status updated to {status}.");
+    }
+    public async Task<ServiceResultDto> UpdateCaseAsync(
+    int hospitalId,
+    int surgeryId,
+    int userId,
+    string roleName,
+    UpdateCaseRequestDto request,
+    string? ipAddress,
+    string? userAgent)
+    {
+        if (request.ScheduledEnd <= request.ScheduledStart)
+        {
+            return ServiceResultDto.Fail(
+                "INVALID_CASE_TIME",
+                "Scheduled end must be after scheduled start.");
+        }
+
+        var existingCase = await _caseRepository.GetCaseByIdAsync(
+            hospitalId,
+            surgeryId);
+
+        if (existingCase is null)
+        {
+            return ServiceResultDto.Fail(
+                "CASE_NOT_FOUND",
+                "Surgical case was not found.");
+        }
+
+        var orRequest = await _caseRepository.GetRequestForSchedulingAsync(
+            hospitalId,
+            existingCase.RequestId);
+
+        if (orRequest is null)
+        {
+            return ServiceResultDto.Fail(
+                "REQUEST_NOT_FOUND",
+                "Related OR request was not found.");
+        }
+
+        var blockBoundary = await _caseRepository.GetBlockBoundaryAsync(
+            hospitalId,
+            existingCase.BlockId);
+
+        if (blockBoundary is null)
+        {
+            return ServiceResultDto.Fail(
+                "INVALID_BLOCK",
+                "Selected block was not found.");
+        }
+
+        var boundaryValidation = ValidateCaseWithinBlock(
+            blockBoundary,
+            request.ScheduledStart,
+            request.ScheduledEnd);
+
+        if (!boundaryValidation.Success)
+        {
+            return boundaryValidation;
+        }
+
+        var blockTypeValidation = ValidateBlockTypeForRequest(
+            blockBoundary,
+            orRequest.SurgeonId,
+            orRequest.Priority);
+
+        if (!blockTypeValidation.Success)
+        {
+            return blockTypeValidation;
+        }
+
+        if (!_availabilityWindowEngine.IsDateAllowed(
+                request.ScheduledStart.Date,
+                orRequest.AvailableDaysMask))
+        {
+            return ServiceResultDto.Fail(
+                "DATE_OUTSIDE_AVAILABILITY",
+                "Scheduled date is outside surgeon availability.");
+        }
+
+        var conflictExists = await _caseRepository.HasCaseConflictAsync(
+            hospitalId,
+            existingCase.BlockId,
+            request.ScheduledStart,
+            request.ScheduledEnd,
+            surgeryId);
+
+        if (conflictExists)
+        {
+            return ServiceResultDto.Fail(
+                "CASE_CONFLICT",
+                "Updated time conflicts with another surgical case.");
+        }
+
+        var updated = await _caseRepository.UpdateCaseAsync(
+            hospitalId,
+            surgeryId,
+            request.ScheduledStart,
+            request.ScheduledEnd,
+            userId);
+
+        if (!updated)
+        {
+            return ServiceResultDto.Fail(
+                "CASE_UPDATE_FAILED",
+                "Only scheduled cases can be updated.");
+        }
+
+        await _auditRepository.AddAuditLogAsync(new CreateAuditLogDto
+        {
+            HospitalId = hospitalId,
+            UserId = userId,
+            RoleName = roleName,
+            Action = "CaseUpdated",
+            Entity = "SurgicalCases",
+            EntityId = surgeryId,
+            OldValue = $"{existingCase.ScheduledStart} - {existingCase.ScheduledEnd}",
+            NewValue = $"{request.ScheduledStart} - {request.ScheduledEnd}",
+            Remarks = "Surgical case schedule updated.",
+            IpAddress = ipAddress,
+            UserAgent = userAgent
+        });
+
+        return ServiceResultDto.Ok("Surgical case updated successfully.");
     }
 
     private ServiceResultDto ValidateStatusTransition(

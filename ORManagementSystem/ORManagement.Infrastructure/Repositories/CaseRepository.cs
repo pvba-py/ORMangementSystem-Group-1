@@ -30,7 +30,26 @@ public class CaseRepository : ICaseRepository
             .OrderBy(surgicalCase => surgicalCase.ScheduledStart)
             .ToListAsync();
     }
-
+    public async Task<BlockBoundaryDto?> GetBlockBoundaryAsync(
+    int hospitalId,
+    int blockId)
+    {
+        return await _dbContext.BlockAllocations
+            .Where(block =>
+                block.HospitalId == hospitalId &&
+                block.BlockId == blockId &&
+                block.BlockStatus != "Cancelled")
+            .Select(block => new BlockBoundaryDto
+            {
+                BlockId = block.BlockId,
+                SurgeonId = block.SurgeonId,
+                BlockType = block.BlockType,
+                BlockDate = block.BlockDate.ToDateTime(TimeOnly.MinValue),
+                StartTime = block.StartTime,
+                EndTime = block.EndTime
+            })
+            .FirstOrDefaultAsync();
+    }
     public async Task<List<SurgicalCaseDto>> GetMyCasesAsync(int hospitalId, int surgeonId)
     {
         return await GetCaseQuery(hospitalId)
@@ -305,23 +324,5 @@ public class CaseRepository : ICaseRepository
             "EXEC analytics.usp_CalculateBlockUtilization @BlockId",
             new SqlParameter("@BlockId", blockId));
     }
-    public async Task<BlockBoundaryDto?> GetBlockBoundaryAsync(int hospitalId, int blockId)
-    {
-        return await _dbContext.BlockAllocations
-            .Where(block =>
-                block.HospitalId == hospitalId &&
-                block.BlockId == blockId)
-            .Select(block => new BlockBoundaryDto
-            {
-                BlockId = block.BlockId,
-                HospitalId = block.HospitalId,
-                SurgeonId = block.SurgeonId,
-                ORRoomId = block.ORRoomId,
-                BlockDate = block.BlockDate.ToDateTime(TimeOnly.MinValue),
-                StartTime = block.StartTime,
-                EndTime = block.EndTime,
-                BlockStatus = block.BlockStatus
-            })
-            .FirstOrDefaultAsync();
-    }
+    
 }

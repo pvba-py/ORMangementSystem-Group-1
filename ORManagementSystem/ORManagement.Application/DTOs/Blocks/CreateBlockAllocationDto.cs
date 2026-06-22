@@ -2,7 +2,7 @@
 
 namespace ORManagement.Application.DTOs.Blocks;
 
-public class UpdateBlockAllocationDto
+public class CreateBlockAllocationDto
 {
     public int? SurgeonId { get; set; }
 
@@ -17,9 +17,6 @@ public class UpdateBlockAllocationDto
 
     [Required]
     public TimeOnly EndTime { get; set; }
-
-    [Required]
-    public string BlockStatus { get; set; } = string.Empty;
 
     [Required]
     public string BlockType { get; set; } = "Open";

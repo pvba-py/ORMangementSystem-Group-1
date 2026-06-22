@@ -36,6 +36,10 @@ export const getMyBlocks = () => {
   return api.get('/blocks/my')
 }
 
+export const createBlock = (payload) => {
+  return api.post('/blocks', payload)
+}
+
 export const updateBlock = (id, payload) => {
   return api.put(`/blocks/${id}`, payload)
 }

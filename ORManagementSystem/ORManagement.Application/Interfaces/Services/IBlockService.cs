@@ -93,4 +93,11 @@ public interface IBlockService
         ReleaseBlockRequestDto request,
         string? ipAddress,
         string? userAgent);
+    Task<ServiceResultDto<int>> CreateBlockAllocationAsync(
+    int hospitalId,
+    int userId,
+    string roleName,
+    CreateBlockAllocationDto request,
+    string? ipAddress,
+    string? userAgent);
 }

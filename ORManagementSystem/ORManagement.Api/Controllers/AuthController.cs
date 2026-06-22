@@ -175,23 +175,7 @@ public class AuthController : ApiControllerBase
 
         return Ok(result.Data);
     }
-
-    private int? GetCurrentUserId()
-    {
-        var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
-
-        if (!int.TryParse(userIdValue, out var userId))
-        {
-            return null;
-        }
-
-        return userId;
-    }
-
-    private string? GetIpAddress()
-    {
-        return HttpContext.Connection.RemoteIpAddress?.ToString();
-    }
+   
 
     private void SetAuthCookies(string accessToken, string refreshToken)
     {

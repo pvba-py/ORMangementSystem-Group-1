@@ -104,6 +104,11 @@ public abstract class ApiControllerBase : ControllerBase
             or "INVALID_FORECAST_STATUS"
             or "FORECAST_STATUS_UPDATE_FAILED"
             or "CASE_OUTSIDE_BLOCK"
+            or "INVALID_BLOCK_TYPE"
+            or "SURGEON_REQUIRED_FOR_RECURRING_BLOCK"
+            or "BLOCK_SURGEON_MISMATCH"
+            or "EMERGENCY_BLOCK_REQUIRED_PRIORITY"
+
                 => BadRequest(errorResponse),
 
             _ => BadRequest(errorResponse)

@@ -300,6 +300,53 @@ public class BlocksController : ApiControllerBase
         });
     }
 
+    [HttpPost("blocks")]
+    [Authorize(Roles = "ORScheduler")]
+    public async Task<IActionResult> CreateBlockAllocation([FromBody] CreateBlockAllocationDto request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                errorCode = "VALIDATION_ERROR",
+                message = "Invalid block request.",
+                errors = ModelState
+            });
+        }
+
+        var userId = GetCurrentUserId();
+
+        if (userId is null)
+        {
+            return Unauthorized(new
+            {
+                success = false,
+                errorCode = "INVALID_TOKEN",
+                message = "Invalid token."
+            });
+        }
+
+        var result = await _blockService.CreateBlockAllocationAsync(
+            GetCurrentHospitalIdOrDefault(),
+            userId.Value,
+            GetCurrentRoleName(),
+            request,
+            GetIpAddress(),
+            GetUserAgent());
+
+        if (!result.Success)
+        {
+            return MapError(result);
+        }
+
+        return Ok(new
+        {
+            success = true,
+            message = result.Message,
+            blockId = result.Data
+        });
+    }
     [HttpGet("blocks")]
     [Authorize(Roles = "ORScheduler")]
     public async Task<IActionResult> GetBlocks(

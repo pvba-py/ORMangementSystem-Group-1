@@ -7,7 +7,7 @@ public class PatientLookupDto
 
     public string MRN { get; set; } = string.Empty;
     public string FullName { get; set; } = string.Empty;
-    public DateTime DateOfBirth { get; set; }
+    public DateOnly DateOfBirth { get; set; }
 
     public bool IsActive { get; set; }
 }

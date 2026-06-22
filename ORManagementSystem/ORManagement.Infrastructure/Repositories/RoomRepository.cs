@@ -191,16 +191,21 @@ public class RoomRepository : IRoomRepository
     }
 
     public async Task<List<CalendarItemDto>> GetCalendarAsync(
-        int hospitalId,
-        DateTime fromDate,
-        DateTime toDate,
-        int? roomId)
+     int hospitalId,
+     DateTime fromDate,
+     DateTime toDate,
+     int? roomId)
     {
         var query =
             from room in _dbContext.OperatingRooms
-            join block in _dbContext.BlockAllocations on room.ORRoomId equals block.ORRoomId
-            join surgeon in _dbContext.Surgeons on block.SurgeonId equals surgeon.SurgeonId
-            join user in _dbContext.Users on surgeon.UserId equals user.UserId
+            join block in _dbContext.BlockAllocations
+                on room.ORRoomId equals block.ORRoomId
+            join surgeon in _dbContext.Surgeons
+                on block.SurgeonId equals surgeon.SurgeonId into surgeonJoin
+            from surgeon in surgeonJoin.DefaultIfEmpty()
+            join user in _dbContext.Users
+                on surgeon != null ? surgeon.UserId : 0 equals user.UserId into userJoin
+            from user in userJoin.DefaultIfEmpty()
             join surgicalCase in _dbContext.SurgicalCases
                 on block.BlockId equals surgicalCase.BlockId into caseJoin
             from surgicalCase in caseJoin.DefaultIfEmpty()
@@ -234,7 +239,9 @@ public class RoomRepository : IRoomRepository
                 StartTime = item.block.StartTime,
                 EndTime = item.block.EndTime,
                 BlockStatus = item.block.BlockStatus,
-                SurgeonName = item.user.FullName,
+                SurgeonName = item.user != null
+                    ? item.user.FullName
+                    : item.block.BlockType + " Capacity",
                 SurgeryId = item.surgicalCase != null ? item.surgicalCase.SurgeryId : null,
                 ScheduledStart = item.surgicalCase != null ? item.surgicalCase.ScheduledStart : null,
                 ScheduledEnd = item.surgicalCase != null ? item.surgicalCase.ScheduledEnd : null,

@@ -6,7 +6,7 @@ public class UtilizationRecordDto
     public int HospitalId { get; set; }
     public int BlockId { get; set; }
 
-    public int SurgeonId { get; set; }
+    public int? SurgeonId { get; set; }
     public string SurgeonName { get; set; } = string.Empty;
 
     public int ORRoomId { get; set; }

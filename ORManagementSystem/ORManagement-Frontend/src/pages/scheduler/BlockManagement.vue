@@ -12,6 +12,7 @@ import {
   addBlockException,
   generateBlocks,
   getBlocks,
+  createBlock,
   updateBlock,
   cancelBlock,
   releaseBlock
@@ -42,7 +43,17 @@ const selectedTemplate = ref(null)
 const selectedBlock = ref(null)
 const selectedReleaseBlock = ref(null)
 const selectedExceptionTemplate = ref(null)
+const showCreateBlockModal = ref(false)
 
+const createBlockForm = ref({
+  surgeonId: '',
+  orRoomId: '',
+  blockDate: '2026-06-22',
+  startTime: '13:00',
+  endTime: '17:00',
+  blockType: 'Open',
+  remarks: ''
+})
 const blockFilters = ref({
   fromDate: '2026-06-22',
   toDate: '2026-06-26',
@@ -73,6 +84,7 @@ const blockForm = ref({
   blockDate: '',
   startTime: '',
   endTime: '',
+  blockType: 'Recurring',
   blockStatus: 'Allocated',
   remarks: ''
 })
@@ -117,7 +129,78 @@ const loadTemplates = async () => {
   const response = await getBlockTemplates()
   templates.value = response.data || []
 }
+const openCreateBlock = () => {
+  createBlockForm.value = {
+    surgeonId: '',
+    orRoomId: '',
+    blockDate: '2026-06-22',
+    startTime: '13:00',
+    endTime: '17:00',
+    blockType: 'Open',
+    remarks: ''
+  }
 
+  showCreateBlockModal.value = true
+}
+
+const closeCreateBlock = () => {
+  showCreateBlockModal.value = false
+}
+const submitCreateBlock = async () => {
+  if (!createBlockForm.value.orRoomId) {
+    showToast('Room is required.', 'warning')
+    return
+  }
+
+  if (!createBlockForm.value.blockDate) {
+    showToast('Block date is required.', 'warning')
+    return
+  }
+
+  if (!createBlockForm.value.startTime || !createBlockForm.value.endTime) {
+    showToast('Start and end time are required.', 'warning')
+    return
+  }
+
+  if (
+    createBlockForm.value.blockType === 'AdHoc' &&
+    !createBlockForm.value.surgeonId
+  ) {
+    showToast('Surgeon is required for AdHoc blocks.', 'warning')
+    return
+  }
+
+  saving.value = true
+
+  try {
+    const payload = {
+      surgeonId: ['Open', 'Emergency'].includes(createBlockForm.value.blockType)
+        ? null
+        : Number(createBlockForm.value.surgeonId),
+      orRoomId: Number(createBlockForm.value.orRoomId),
+      blockDate: createBlockForm.value.blockDate,
+      startTime: normalizeTimeForApi(createBlockForm.value.startTime),
+      endTime: normalizeTimeForApi(createBlockForm.value.endTime),
+      blockType: createBlockForm.value.blockType,
+      remarks: createBlockForm.value.remarks
+    }
+
+    await createBlock(payload)
+
+    showToast('Block created successfully.', 'success')
+    closeCreateBlock()
+    await loadBlocks()
+  } catch (err) {
+    const message =
+      err?.response?.data?.message ||
+      err?.response?.data?.title ||
+      'Failed to create block.'
+
+    showToast(message, 'error')
+  } finally {
+    saving.value = false
+  }
+}
 const loadBlocks = async () => {
   const params = {}
 
@@ -338,11 +421,12 @@ const openEditBlock = block => {
   selectedBlock.value = block
 
   blockForm.value = {
-    surgeonId: block.surgeonId,
+    surgeonId: block.surgeonId || '',
     orRoomId: block.orRoomId,
     blockDate: block.blockDate?.substring(0, 10) || '',
     startTime: formatTime(block.startTime),
     endTime: formatTime(block.endTime),
+    blockType: block.blockType || 'Recurring',
     blockStatus: block.blockStatus,
     remarks: block.remarks || ''
   }
@@ -358,15 +442,41 @@ const closeEditBlockModal = () => {
 const submitBlockUpdate = async () => {
   if (!selectedBlock.value) return
 
+  if (!blockForm.value.orRoomId) {
+    showToast('Room is required.', 'warning')
+    return
+  }
+
+  if (!blockForm.value.blockDate) {
+    showToast('Block date is required.', 'warning')
+    return
+  }
+
+  if (!blockForm.value.startTime || !blockForm.value.endTime) {
+    showToast('Start and end time are required.', 'warning')
+    return
+  }
+
+  if (
+    ['Recurring', 'AdHoc'].includes(blockForm.value.blockType) &&
+    !blockForm.value.surgeonId
+  ) {
+    showToast('Surgeon is required for Recurring/AdHoc blocks.', 'warning')
+    return
+  }
+
   saving.value = true
 
   try {
     await updateBlock(selectedBlock.value.blockId, {
-      surgeonId: Number(blockForm.value.surgeonId),
+      surgeonId: ['Open', 'Emergency'].includes(blockForm.value.blockType)
+        ? null
+        : Number(blockForm.value.surgeonId),
       orRoomId: Number(blockForm.value.orRoomId),
       blockDate: blockForm.value.blockDate,
       startTime: normalizeTimeForApi(blockForm.value.startTime),
       endTime: normalizeTimeForApi(blockForm.value.endTime),
+      blockType: blockForm.value.blockType,
       blockStatus: blockForm.value.blockStatus,
       remarks: blockForm.value.remarks
     })
@@ -495,6 +605,12 @@ onMounted(loadPage)
 
       <!-- Blocks Tab -->
       <div v-if="activeTab === 'blocks'">
+        <div class="d-flex justify-content-end mb-3">
+  <button class="btn btn-primary" @click="openCreateBlock">
+    <i class="bi bi-plus-circle me-1"></i>
+    Create One-Time Block
+  </button>
+</div>
         <div class="page-card mb-4">
           <div class="row g-3 align-items-end">
             <div class="col-md-3">
@@ -577,7 +693,9 @@ onMounted(loadPage)
               <tbody>
                 <tr v-for="block in blocks" :key="block.blockId">
                   <td>#{{ block.blockId }}</td>
-                  <td>{{ block.surgeonName }}</td>
+                  <td>
+  {{ block.surgeonName || `${block.blockType} Capacity` }}
+</td>
                   <td>{{ block.roomName }}</td>
                   <td>{{ formatDate(block.blockDate) }}</td>
                   <td>{{ formatTime(block.startTime) }} - {{ formatTime(block.endTime) }}</td>
@@ -594,12 +712,16 @@ onMounted(loadPage)
                     </button>
 
                     <button
-                      class="btn btn-sm btn-outline-success me-2"
-                      :disabled="block.blockStatus === 'Released' || block.blockStatus === 'Cancelled'"
-                      @click="openReleaseBlock(block)"
-                    >
-                      Release
-                    </button>
+  class="btn btn-sm btn-outline-success me-2"
+  :disabled="
+    block.blockStatus === 'Released' ||
+    block.blockStatus === 'Cancelled' ||
+    block.blockType === 'Emergency'
+  "
+  @click="openReleaseBlock(block)"
+>
+  Release
+</button>
 
                     <button
                       class="btn btn-sm btn-outline-danger"
@@ -749,30 +871,31 @@ onMounted(loadPage)
     >
       <div class="row g-3">
         <div class="col-md-3">
-          <label class="form-label">Surgeon</label>
-          <select v-model="blockForm.surgeonId" class="form-select">
-            <option
-              v-for="surgeon in surgeons"
-              :key="surgeon.surgeonId"
-              :value="surgeon.surgeonId"
-            >
-              {{ surgeon.fullName || surgeon.surgeonName }}
-            </option>
-          </select>
-        </div>
+  <label class="form-label">Block Type</label>
+  <select v-model="blockForm.blockType" class="form-select">
+    <option value="Recurring">Recurring</option>
+    <option value="Open">Open</option>
+    <option value="Emergency">Emergency</option>
+    <option value="AdHoc">AdHoc</option>
+  </select>
+</div>
 
-        <div class="col-md-3">
-          <label class="form-label">Room</label>
-          <select v-model="blockForm.orRoomId" class="form-select">
-            <option
-              v-for="room in rooms"
-              :key="room.orRoomId"
-              :value="room.orRoomId"
-            >
-              {{ room.roomName }}
-            </option>
-          </select>
-        </div>
+<div
+  v-if="['Recurring', 'AdHoc'].includes(blockForm.blockType)"
+  class="col-md-3"
+>
+  <label class="form-label">Surgeon</label>
+  <select v-model="blockForm.surgeonId" class="form-select">
+    <option value="">Select surgeon</option>
+    <option
+      v-for="surgeon in surgeons"
+      :key="surgeon.surgeonId"
+      :value="surgeon.surgeonId"
+    >
+      {{ surgeon.fullName || surgeon.surgeonName }}
+    </option>
+  </select>
+</div>
 
         <div class="col-md-2">
           <label class="form-label">Date</label>
@@ -991,5 +1114,112 @@ onMounted(loadPage)
         </button>
       </template>
     </AppModal>
+
+    <!-- Create One-Time Block Modal -->
+<AppModal
+  :show="showCreateBlockModal"
+  title="Create One-Time Block"
+  size="lg"
+  @close="closeCreateBlock"
+>
+  <div class="row g-3">
+    <div class="col-md-4">
+      <label class="form-label">Block Type</label>
+      <select v-model="createBlockForm.blockType" class="form-select">
+        <option value="Open">Open</option>
+        <option value="Emergency">Emergency</option>
+        <option value="AdHoc">AdHoc</option>
+      </select>
+    </div>
+
+    <div
+      v-if="createBlockForm.blockType === 'AdHoc'"
+      class="col-md-4"
+    >
+      <label class="form-label">Surgeon</label>
+      <select v-model="createBlockForm.surgeonId" class="form-select">
+        <option value="">Select surgeon</option>
+        <option
+          v-for="surgeon in surgeons"
+          :key="surgeon.surgeonId"
+          :value="surgeon.surgeonId"
+        >
+          {{ surgeon.fullName || surgeon.surgeonName }}
+        </option>
+      </select>
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label">Room</label>
+      <select v-model="createBlockForm.orRoomId" class="form-select">
+        <option value="">Select room</option>
+        <option
+          v-for="room in rooms"
+          :key="room.orRoomId"
+          :value="room.orRoomId"
+        >
+          {{ room.roomName }}
+        </option>
+      </select>
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label">Date</label>
+      <input
+        v-model="createBlockForm.blockDate"
+        type="date"
+        class="form-control"
+      />
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label">Start Time</label>
+      <input
+        v-model="createBlockForm.startTime"
+        type="time"
+        class="form-control"
+      />
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label">End Time</label>
+      <input
+        v-model="createBlockForm.endTime"
+        type="time"
+        class="form-control"
+      />
+    </div>
+
+    <div class="col-md-12">
+      <label class="form-label">Remarks</label>
+      <input
+        v-model="createBlockForm.remarks"
+        class="form-control"
+        placeholder="Optional remarks"
+      />
+    </div>
+  </div>
+
+  <template #footer>
+    <button
+      class="btn btn-outline-secondary"
+      @click="closeCreateBlock"
+    >
+      Cancel
+    </button>
+
+    <button
+      class="btn btn-primary"
+      :disabled="saving"
+      @click="submitCreateBlock"
+    >
+      <span
+        v-if="saving"
+        class="spinner-border spinner-border-sm me-2"
+      ></span>
+      Create Block
+    </button>
+  </template>
+</AppModal>
   </div>
 </template>

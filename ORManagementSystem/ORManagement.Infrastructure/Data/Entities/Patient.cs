@@ -13,7 +13,7 @@ public partial class Patient
 
     public string FullName { get; set; } = null!;
 
-    public DateTime DateOfBirth { get; set; }
+    public DateOnly DateOfBirth { get; set; }
 
     public bool IsActive { get; set; }
 

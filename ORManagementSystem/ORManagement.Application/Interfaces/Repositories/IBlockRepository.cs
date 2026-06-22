@@ -1,4 +1,5 @@
 ﻿using ORManagement.Application.DTOs.Blocks;
+using ORManagement.Application.DTOs.Cases;
 
 namespace ORManagement.Application.Interfaces.Repositories;
 
@@ -65,4 +66,7 @@ public interface IBlockRepository
     Task<List<BlockTemplateGenerationDto>> GetActiveTemplatesForGenerationAsync(int hospitalId);
     Task<bool> IsTemplateExceptionAsync(int templateId, DateTime date);
     Task<bool> GeneratedBlockExistsAsync(int roomId, DateTime blockDate, TimeOnly startTime);
+    Task<int> CreateBlockAllocationAsync(
+    int hospitalId,
+    CreateBlockAllocationDto request);
 }

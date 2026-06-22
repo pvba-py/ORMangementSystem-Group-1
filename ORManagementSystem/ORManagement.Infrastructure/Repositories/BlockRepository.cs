@@ -15,6 +15,29 @@ public class BlockRepository : IBlockRepository
         _dbContext = dbContext;
     }
 
+    public async Task<int> CreateBlockAllocationAsync(
+    int hospitalId,
+    CreateBlockAllocationDto request)
+    {
+        var block = new BlockAllocation
+        {
+            HospitalId = hospitalId,
+            TemplateId = null,
+            SurgeonId = request.SurgeonId,
+            ORRoomId = request.ORRoomId,
+            BlockDate = DateOnly.FromDateTime(request.BlockDate.Date),
+            StartTime = request.StartTime,
+            EndTime = request.EndTime,
+            BlockType = request.BlockType,
+            BlockStatus = "Allocated",
+            Remarks = request.Remarks
+        };
+
+        await _dbContext.BlockAllocations.AddAsync(block);
+        await _dbContext.SaveChangesAsync();
+
+        return block.BlockId;
+    }
     public async Task<List<BlockTemplateDto>> GetTemplatesAsync(int hospitalId)
     {
         return await
@@ -214,18 +237,23 @@ public class BlockRepository : IBlockRepository
         int? roomId)
     {
         var query =
-            from block in _dbContext.BlockAllocations
-            join surgeon in _dbContext.Surgeons on block.SurgeonId equals surgeon.SurgeonId
-            join user in _dbContext.Users on surgeon.UserId equals user.UserId
-            join room in _dbContext.OperatingRooms on block.ORRoomId equals room.ORRoomId
-            where block.HospitalId == hospitalId
-            select new
-            {
-                block,
-                surgeon,
-                user,
-                room
-            };
+    from block in _dbContext.BlockAllocations
+    join room in _dbContext.OperatingRooms
+        on block.ORRoomId equals room.ORRoomId
+    join surgeon in _dbContext.Surgeons
+        on block.SurgeonId equals surgeon.SurgeonId into surgeonJoin
+    from surgeon in surgeonJoin.DefaultIfEmpty()
+    join user in _dbContext.Users
+        on surgeon != null ? surgeon.UserId : 0 equals user.UserId into userJoin
+    from user in userJoin.DefaultIfEmpty()
+    where block.HospitalId == hospitalId
+    select new
+    {
+        block,
+        room,
+        surgeon,
+        user
+    };
 
         if (fromDate.HasValue)
         {
@@ -252,23 +280,24 @@ public class BlockRepository : IBlockRepository
         return await query
             .OrderBy(item => item.block.BlockDate)
             .ThenBy(item => item.block.StartTime)
-            .Select(item => new BlockAllocationDto
-            {
-                BlockId = item.block.BlockId,
-                HospitalId = item.block.HospitalId,
-                SurgeonId = item.block.SurgeonId,
-                ORRoomId = item.block.ORRoomId,
-                TemplateId = item.block.TemplateId,
-                SurgeonName = item.user.FullName,
-                RoomName = item.room.RoomName,
-                BlockDate = item.block.BlockDate.ToDateTime(TimeOnly.MinValue),
-                StartTime = item.block.StartTime,
-                EndTime = item.block.EndTime,
-                BlockType = item.block.BlockType,
-                BlockStatus = item.block.BlockStatus,
-                Remarks = item.block.Remarks,
-                AllocatedMinutes = (int)(item.block.EndTime.ToTimeSpan() - item.block.StartTime.ToTimeSpan()).TotalMinutes
-            })
+           .Select(item => new BlockAllocationDto
+           {
+               BlockId = item.block.BlockId,
+               HospitalId = item.block.HospitalId,
+               TemplateId = item.block.TemplateId,
+               SurgeonId = item.block.SurgeonId,
+               SurgeonName = item.user != null
+        ? item.user.FullName
+        : item.block.BlockType + " Capacity",
+               ORRoomId = item.room.ORRoomId,
+               RoomName = item.room.RoomName,
+               BlockDate = item.block.BlockDate.ToDateTime(TimeOnly.MinValue),
+               StartTime = item.block.StartTime,
+               EndTime = item.block.EndTime,
+               BlockType = item.block.BlockType,
+               BlockStatus = item.block.BlockStatus,
+               Remarks = item.block.Remarks
+           })
             .ToListAsync();
     }
 
