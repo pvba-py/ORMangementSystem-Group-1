@@ -3,6 +3,15 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/authStore'
 import { showToast } from '../../utils/toast'
 
+defineProps({
+  sidebarCollapsed: {
+    type: Boolean,
+    default: false
+  }
+})
+
+const emit = defineEmits(['toggle-sidebar'])
+
 const router = useRouter()
 const authStore = useAuthStore()
 
@@ -21,11 +30,23 @@ const handleLogout = async () => {
 
 <template>
   <nav class="app-navbar">
-    <div>
-      <h5 class="mb-0">OR Block Schedule Management</h5>
-      <small class="text-muted">
-        {{ authStore.user?.roleName || 'User' }}
-      </small>
+    <div class="navbar-left">
+      <button
+        class="btn btn-outline-secondary btn-sm sidebar-toggle"
+        @click="emit('toggle-sidebar')"
+      >
+        <i
+          class="bi"
+          :class="sidebarCollapsed ? 'bi-list' : 'bi-layout-sidebar-inset'"
+        ></i>
+      </button>
+
+      <div>
+        <h5 class="mb-0">OR Block Schedule Management</h5>
+        <small class="text-muted">
+          {{ authStore.user?.roleName || 'User' }}
+        </small>
+      </div>
     </div>
 
     <div class="d-flex align-items-center gap-3">
@@ -55,6 +76,20 @@ const handleLogout = async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.navbar-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.sidebar-toggle {
+  width: 36px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .user-info {

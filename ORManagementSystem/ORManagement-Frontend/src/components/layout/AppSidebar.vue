@@ -1,6 +1,14 @@
 <script setup>
 import { computed } from 'vue'
 import { useAuthStore } from '../../stores/authStore'
+import logoUrl from '../../assets/images/image.png'
+
+defineProps({
+  collapsed: {
+    type: Boolean,
+    default: false
+  }
+})
 
 const authStore = useAuthStore()
 
@@ -104,10 +112,17 @@ const links = computed(() => {
 </script>
 
 <template>
-  <aside class="app-sidebar">
+  <aside
+    class="app-sidebar"
+    :class="{ collapsed }"
+  >
     <div class="brand">
-      <i class="bi bi-hospital"></i>
-      <span>OR Manager</span>
+      <img
+        :src="logoUrl"
+        alt="HCA Healthcare"
+        class="brand-logo"
+        :class="{ 'brand-logo-collapsed': collapsed }"
+      />
     </div>
 
     <nav class="sidebar-nav">
@@ -117,9 +132,16 @@ const links = computed(() => {
         :to="link.to"
         class="sidebar-link"
         active-class="active"
+        :title="collapsed ? link.label : ''"
       >
         <i :class="`bi ${link.icon}`"></i>
-        <span>{{ link.label }}</span>
+
+        <span
+          v-if="!collapsed"
+          class="sidebar-label"
+        >
+          {{ link.label }}
+        </span>
       </router-link>
     </nav>
   </aside>
@@ -128,22 +150,37 @@ const links = computed(() => {
 <style scoped>
 .app-sidebar {
   width: 260px;
-  background: #111827;
+  background: #071f49;
   color: white;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  transition: width 0.2s ease;
+  overflow-x: hidden;
 }
 
+.app-sidebar.collapsed {
+  width: 76px;
+}
 .brand {
-  height: 64px;
+  height: 76px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 20px;
-  font-size: 18px;
-  font-weight: 700;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  justify-content: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.brand-logo {
+  max-width: 180px;
+  width: 100%;
+  height: 80px;
+  object-fit: contain;
+  transition: all 0.2s ease;
+}
+
+.brand-logo-collapsed {
+  max-width: 48px;
 }
 
 .sidebar-nav {
@@ -162,6 +199,19 @@ const links = computed(() => {
   align-items: center;
   gap: 12px;
   font-size: 14px;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.sidebar-link i {
+  font-size: 18px;
+  min-width: 20px;
+  text-align: center;
+}
+
+.app-sidebar.collapsed .sidebar-link {
+  justify-content: center;
+  padding: 11px 0;
 }
 
 .sidebar-link:hover {
@@ -172,5 +222,10 @@ const links = computed(() => {
 .sidebar-link.active {
   background: #2563eb;
   color: white;
+}
+
+.sidebar-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>
