@@ -331,49 +331,40 @@ public class RequestService : IRequestService
     }
 
     public async Task<ServiceResultDto<RequestScoreDto>> GetRequestScoreAsync(
-        int hospitalId,
-        int requestId)
+    int hospitalId,
+    int requestId)
     {
         var request = await _requestRepository.GetRequestByIdAsync(hospitalId, requestId);
 
         if (request is null)
         {
-            return ServiceResultDto<RequestScoreDto>.Fail("REQUEST_NOT_FOUND", "Request was not found.");
+            return ServiceResultDto<RequestScoreDto>.Fail(
+                "REQUEST_NOT_FOUND",
+                "Request was not found.");
         }
 
-        var waitingDays = Math.Min((DateTime.UtcNow - request.CreatedAt).Days, 30);
+        var breakdown = _priorityScoreEngine.CalculateBreakdown(
+            request.Priority,
+            request.PatientReadiness,
+            request.CreatedAt,
+            request.CyclesWaited,
+            durationFitScore: null);
 
-        var priorityWeight = request.Priority switch
-        {
-            "Emergency" => 3,
-            "Urgent" => 2,
-            "Elective" => 1,
-            _ => 1
-        };
-
-        var readinessWeight = request.PatientReadiness switch
-        {
-            "Ready" => 1.0m,
-            "PendingClearance" => 0.5m,
-            _ => 0m
-        };
-
-        var priorityScore = priorityWeight * 50;
-        var waitingScore = waitingDays * 2;
-        var readinessScore = readinessWeight * 20;
-        var cycleWaitScore = request.CyclesWaited * 10;
-
-        var total = priorityScore + waitingScore + readinessScore + cycleWaitScore;
+        const int starvationThreshold = 3;
 
         var score = new RequestScoreDto
         {
             RequestId = request.RequestId,
-            PriorityScore = priorityScore,
-            WaitingScore = waitingScore,
-            ReadinessScore = readinessScore,
-            CycleWaitScore = cycleWaitScore,
-            TotalScore = total,
-            IsStarved = request.CyclesWaited >= 3
+
+            PriorityScore = breakdown.PriorityScore,
+            WaitingScore = breakdown.WaitingScore,
+            ReadinessScore = breakdown.ReadinessScore,
+            CycleWaitScore = breakdown.CycleWaitScore,
+            DurationFitScore = breakdown.DurationFitScore,
+
+            TotalScore = breakdown.TotalScore,
+
+            IsStarved = request.CyclesWaited >= starvationThreshold
         };
 
         return ServiceResultDto<RequestScoreDto>.Ok(score);

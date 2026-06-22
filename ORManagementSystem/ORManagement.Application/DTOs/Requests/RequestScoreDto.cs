@@ -8,6 +8,8 @@ public class RequestScoreDto
     public decimal WaitingScore { get; set; }
     public decimal ReadinessScore { get; set; }
     public decimal CycleWaitScore { get; set; }
+    public decimal DurationFitScore { get; set; }
+
     public decimal TotalScore { get; set; }
 
     public bool IsStarved { get; set; }

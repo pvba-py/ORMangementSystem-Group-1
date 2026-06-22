@@ -19,7 +19,7 @@ public class RoomRepository : IRoomRepository
     public async Task<List<RoomDto>> GetRoomsAsync(int hospitalId)
     {
         return await _dbContext.OperatingRooms
-            .Where(room => room.HospitalId == hospitalId)
+            .Where(room => room.HospitalId == hospitalId && room.IsActive == true)
             .OrderBy(room => room.ORRoomId)
             .Select(room => new RoomDto
             {

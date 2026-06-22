@@ -10,13 +10,15 @@ import {
   updateRequestStatus,
   getRequestScore
 } from '../../services/requestService'
-import { formatDate, formatDateTime } from '../../utils/formatters'
+import { formatDate } from '../../utils/formatters'
 import { showToast } from '../../utils/toast'
 
 const loading = ref(false)
 const saving = ref(false)
+
 const requests = ref([])
 const statusFilter = ref('')
+
 const selectedRequest = ref(null)
 const scoreResult = ref(null)
 
@@ -24,6 +26,24 @@ const statusForm = ref({
   status: 'Approved',
   schedulerRemarks: ''
 })
+
+const getScoreValue = score => {
+  return (
+    score?.totalScore ??
+    score?.rankScore ??
+    score?.score ??
+    score?.priorityScore ??
+    null
+  )
+}
+
+const formatScore = value => {
+  if (value === null || value === undefined) {
+    return '-'
+  }
+
+  return Number(value).toFixed(2)
+}
 
 const loadRequests = async () => {
   loading.value = true
@@ -36,7 +56,36 @@ const loadRequests = async () => {
     }
 
     const response = await getRequests(params)
-    requests.value = response.data || []
+    const requestList = response.data || []
+
+    const scoredRequests = await Promise.all(
+      requestList.map(async request => {
+        try {
+          const scoreResponse = await getRequestScore(request.requestId)
+          const score = scoreResponse.data
+          const totalScore = getScoreValue(score)
+
+          return {
+            ...request,
+            requestScore: totalScore,
+            scoreBreakdown: score
+          }
+        } catch {
+          return {
+            ...request,
+            requestScore: null,
+            scoreBreakdown: null
+          }
+        }
+      })
+    )
+
+    requests.value = scoredRequests.sort((a, b) => {
+      const scoreA = a.requestScore ?? -1
+      const scoreB = b.requestScore ?? -1
+
+      return scoreB - scoreA
+    })
   } catch (err) {
     const message =
       err?.response?.data?.message ||
@@ -49,15 +98,27 @@ const loadRequests = async () => {
   }
 }
 
-const openStatusUpdate = request => {
+const openReview = async request => {
   selectedRequest.value = request
-  scoreResult.value = null
+
+  scoreResult.value = request.scoreBreakdown || null
 
   statusForm.value = {
     status: request.requestStatus === 'PendingReview'
       ? 'Approved'
       : request.requestStatus,
     schedulerRemarks: request.schedulerRemarks || ''
+  }
+
+  if (scoreResult.value) {
+    return
+  }
+
+  try {
+    const response = await getRequestScore(request.requestId)
+    scoreResult.value = response.data
+  } catch {
+    scoreResult.value = null
   }
 }
 
@@ -94,21 +155,6 @@ const submitStatusUpdate = async () => {
     showToast(message, 'error')
   } finally {
     saving.value = false
-  }
-}
-
-const loadScore = async request => {
-  try {
-    const response = await getRequestScore(request.requestId)
-    scoreResult.value = response.data
-    selectedRequest.value = request
-  } catch (err) {
-    const message =
-      err?.response?.data?.message ||
-      err?.response?.data?.title ||
-      'Failed to load request score.'
-
-    showToast(message, 'error')
   }
 }
 
@@ -206,6 +252,13 @@ onMounted(loadRequests)
               <td>{{ request.priority }}</td>
               <td>{{ request.patientReadiness }}</td>
               <td>{{ request.availableDaysDisplay }}</td>
+              
+<td>
+  <strong v-if="request.requestScore !== null && request.requestScore !== undefined">
+    {{ formatScore(request.requestScore) }}
+  </strong>
+  <span v-else class="text-muted">-</span>
+</td>
 
               <td>
                 <StatusBadge :status="request.requestStatus" />
@@ -213,17 +266,10 @@ onMounted(loadRequests)
 
               <td class="text-end">
                 <button
-                  class="btn btn-sm btn-outline-info me-2"
-                  @click="loadScore(request)"
-                >
-                  Score
-                </button>
-
-                <button
                   class="btn btn-sm btn-outline-primary"
-                  @click="openStatusUpdate(request)"
+                  @click="openReview(request)"
                 >
-                  Update
+                  Review
                 </button>
               </td>
             </tr>
@@ -233,89 +279,179 @@ onMounted(loadRequests)
     </div>
 
     <AppModal
-  :show="!!selectedRequest"
-  :title="selectedRequest ? `Request #${selectedRequest.requestId}` : 'Request'"
-  size="xl"
-  @close="closePanel"
->
-  <div v-if="selectedRequest" class="row g-4">
-    <div class="col-lg-7">
-      <h6 class="mb-3">Update Status</h6>
-
-      <div class="row g-3">
-        <div class="col-md-4">
-          <label class="form-label">Status</label>
-          <select v-model="statusForm.status" class="form-select">
-            <option value="Approved">Approved</option>
-            <option value="Modified">Modified</option>
-            <option value="Waitlisted">Waitlisted</option>
-            <option value="Rejected">Rejected</option>
-            <option value="Scheduled">Scheduled</option>
-          </select>
-        </div>
-
-        <div class="col-md-8">
-          <label class="form-label">Scheduler Remarks</label>
-          <input
-            v-model="statusForm.schedulerRemarks"
-            class="form-control"
-            placeholder="Remarks visible to surgeon"
-          />
-        </div>
-      </div>
-    </div>
-
-    <div class="col-lg-5">
-      <h6 class="mb-3">Request Score</h6>
-
-      <div v-if="scoreResult" class="score-box">
-        <div class="d-flex justify-content-between mb-2">
-          <span>Rank Score</span>
-          <strong>{{ scoreResult.rankScore ?? scoreResult.score ?? '-' }}</strong>
-        </div>
-
-        <div class="d-flex justify-content-between mb-2">
-          <span>Priority</span>
-          <strong>{{ selectedRequest.priority }}</strong>
-        </div>
-
-        <div class="d-flex justify-content-between mb-2">
-          <span>Cycles Waited</span>
-          <strong>{{ selectedRequest.cyclesWaited }}</strong>
-        </div>
-
-        <div class="d-flex justify-content-between">
-          <span>Availability</span>
-          <strong>{{ selectedRequest.availableDaysDisplay }}</strong>
-        </div>
-      </div>
-
-      <div v-else class="text-muted small">
-        Score was not loaded for this request. Click Score from the table to view score details.
-      </div>
-    </div>
-  </div>
-
-  <template #footer>
-    <button class="btn btn-outline-secondary" @click="closePanel">
-      Cancel
-    </button>
-
-    <button
-      class="btn btn-primary"
-      :disabled="saving"
-      @click="submitStatusUpdate"
+      :show="!!selectedRequest"
+      :title="selectedRequest ? `Request #${selectedRequest.requestId}` : 'Request'"
+      size="xl"
+      @close="closePanel"
     >
-      <span v-if="saving" class="spinner-border spinner-border-sm me-2"></span>
-      Save Status
-    </button>
-  </template>
-</AppModal>
+      <div v-if="selectedRequest" class="row g-4">
+        <div class="col-lg-7">
+          <h6 class="mb-3">Scheduler Decision</h6>
+
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Status</label>
+              <select v-model="statusForm.status" class="form-select">
+                <option value="Approved">Approved</option>
+                <option value="Modified">Modified</option>
+                <option value="Waitlisted">Waitlisted</option>
+                <option value="Rejected">Rejected</option>
+                <option value="Scheduled">Scheduled</option>
+              </select>
+            </div>
+
+            <div class="col-md-8">
+              <label class="form-label">Scheduler Remarks</label>
+              <input
+                v-model="statusForm.schedulerRemarks"
+                class="form-control"
+                placeholder="Remarks visible to surgeon"
+              />
+            </div>
+          </div>
+
+          <div class="mt-4">
+            <h6 class="mb-3">Request Summary</h6>
+
+            <div class="summary-box">
+              <div class="d-flex justify-content-between mb-2">
+                <span>Surgeon</span>
+                <strong>{{ selectedRequest.surgeonName }}</strong>
+              </div>
+
+              <div class="d-flex justify-content-between mb-2">
+                <span>Patient</span>
+                <strong>{{ selectedRequest.patientName }}</strong>
+              </div>
+
+              <div class="d-flex justify-content-between mb-2">
+                <span>Surgery</span>
+                <strong>{{ selectedRequest.surgeryType }}</strong>
+              </div>
+
+              <div class="d-flex justify-content-between mb-2">
+                <span>Preferred</span>
+                <strong>
+                  {{ formatDate(selectedRequest.preferredDate) }}
+                  · {{ selectedRequest.preferredQuarter }}
+                </strong>
+              </div>
+
+              <div class="d-flex justify-content-between">
+                <span>Duration</span>
+                <strong>{{ selectedRequest.estimatedDurationMin }} min</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-5">
+          <h6 class="mb-3">Request Score</h6>
+
+          <div v-if="scoreResult" class="score-box">
+            <div class="d-flex justify-content-between mb-2">
+              <span>Total Score</span>
+              <strong>{{ formatScore(getScoreValue(scoreResult)) }} / 100</strong>
+            </div>
+
+            <hr />
+
+            <div class="d-flex justify-content-between mb-2">
+              <span>Weighted Priority</span>
+              <strong>{{ formatScore(scoreResult.priorityScore) }}</strong>
+            </div>
+
+            <div class="d-flex justify-content-between mb-2">
+              <span>Weighted Waiting</span>
+              <strong>{{ formatScore(scoreResult.waitingScore) }}</strong>
+            </div>
+
+            <div class="d-flex justify-content-between mb-2">
+              <span>Weighted Readiness</span>
+              <strong>{{ formatScore(scoreResult.readinessScore) }}</strong>
+            </div>
+
+            <div class="d-flex justify-content-between mb-2">
+              <span>Weighted Cycle Wait</span>
+              <strong>{{ formatScore(scoreResult.cycleWaitScore) }}</strong>
+            </div>
+
+            <div
+              v-if="scoreResult.durationFitScore !== undefined"
+              class="d-flex justify-content-between mb-2"
+            >
+              <span>Weighted Duration Fit</span>
+              <strong>{{ formatScore(scoreResult.durationFitScore) }}</strong>
+            </div>
+
+            <hr />
+
+            <div class="d-flex justify-content-between mb-2">
+              <span>Priority</span>
+              <strong>{{ selectedRequest.priority }}</strong>
+            </div>
+
+            <div class="d-flex justify-content-between mb-2">
+              <span>Patient Readiness</span>
+              <strong>{{ selectedRequest.patientReadiness }}</strong>
+            </div>
+
+            <div class="d-flex justify-content-between mb-2">
+              <span>Cycles Waited</span>
+              <strong>{{ selectedRequest.cyclesWaited }}</strong>
+            </div>
+
+            <div class="d-flex justify-content-between mb-2">
+              <span>Availability</span>
+              <strong>{{ selectedRequest.availableDaysDisplay }}</strong>
+            </div>
+
+            <div class="d-flex justify-content-between">
+              <span>Starved</span>
+              <strong>
+                <span
+                  class="badge"
+                  :class="scoreResult.isStarved ? 'bg-danger' : 'bg-secondary'"
+                >
+                  {{ scoreResult.isStarved ? 'Yes' : 'No' }}
+                </span>
+              </strong>
+            </div>
+          </div>
+
+          <div v-else class="text-muted small">
+            Score is not available for this request.
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <button
+          class="btn btn-outline-secondary"
+          @click="closePanel"
+        >
+          Cancel
+        </button>
+
+        <button
+          class="btn btn-primary"
+          :disabled="saving"
+          @click="submitStatusUpdate"
+        >
+          <span
+            v-if="saving"
+            class="spinner-border spinner-border-sm me-2"
+          ></span>
+          Save Decision
+        </button>
+      </template>
+    </AppModal>
   </div>
 </template>
 
 <style scoped>
-.score-box {
+.score-box,
+.summary-box {
   border: 1px solid #e5e7eb;
   border-radius: 12px;
   padding: 16px;

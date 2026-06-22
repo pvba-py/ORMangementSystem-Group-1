@@ -9,6 +9,23 @@ public class PriorityScoreEngine
         int cyclesWaited,
         int? durationFitScore = null)
     {
+        var breakdown = CalculateBreakdown(
+            priority,
+            patientReadiness,
+            createdAt,
+            cyclesWaited,
+            durationFitScore);
+
+        return breakdown.TotalScore;
+    }
+
+    public PriorityScoreBreakdown CalculateBreakdown(
+        string priority,
+        string patientReadiness,
+        DateTime createdAt,
+        int cyclesWaited,
+        int? durationFitScore = null)
+    {
         var normalizedPriority = Normalize(priority);
         var normalizedReadiness = Normalize(patientReadiness);
 
@@ -20,11 +37,11 @@ public class PriorityScoreEngine
         var cappedCyclesWaited = Math.Min(Math.Max(cyclesWaited, 0), 5);
         var cappedFitScore = Math.Clamp(durationFitScore ?? 0, 0, 100);
 
-        var priorityScore = GetPriorityScore(normalizedPriority);
-        var readinessScore = GetReadinessScore(normalizedReadiness);
-        var waitingScore = cappedWaitingDays / 30m * 100m;
-        var cycleScore = cappedCyclesWaited / 5m * 100m;
-        var fitScore = cappedFitScore;
+        var basePriorityScore = GetPriorityScore(normalizedPriority);
+        var baseReadinessScore = GetReadinessScore(normalizedReadiness);
+        var baseWaitingScore = cappedWaitingDays / 30m * 100m;
+        var baseCycleScore = cappedCyclesWaited / 5m * 100m;
+        var baseFitScore = cappedFitScore;
 
         var readinessMultiplier = normalizedReadiness switch
         {
@@ -34,16 +51,28 @@ public class PriorityScoreEngine
             _ => 0.5m
         };
 
-        var rawScore =
-            priorityScore * 0.40m +
-            readinessScore * 0.25m +
-            waitingScore * 0.15m +
-            cycleScore * 0.10m +
-            fitScore * 0.10m;
+        var priorityContribution = basePriorityScore * 0.40m * readinessMultiplier;
+        var readinessContribution = baseReadinessScore * 0.25m * readinessMultiplier;
+        var waitingContribution = baseWaitingScore * 0.15m * readinessMultiplier;
+        var cycleContribution = baseCycleScore * 0.10m * readinessMultiplier;
+        var fitContribution = baseFitScore * 0.10m * readinessMultiplier;
 
-        var finalScore = rawScore * readinessMultiplier;
+        var totalScore =
+            priorityContribution +
+            readinessContribution +
+            waitingContribution +
+            cycleContribution +
+            fitContribution;
 
-        return Math.Round(finalScore, 2);
+        return new PriorityScoreBreakdown
+        {
+            PriorityScore = Math.Round(priorityContribution, 2),
+            ReadinessScore = Math.Round(readinessContribution, 2),
+            WaitingScore = Math.Round(waitingContribution, 2),
+            CycleWaitScore = Math.Round(cycleContribution, 2),
+            DurationFitScore = Math.Round(fitContribution, 2),
+            TotalScore = Math.Round(Math.Clamp(totalScore, 0, 100), 2)
+        };
     }
 
     private static string Normalize(string? value)
@@ -74,4 +103,14 @@ public class PriorityScoreEngine
             _ => 25m
         };
     }
+}
+
+public class PriorityScoreBreakdown
+{
+    public decimal PriorityScore { get; set; }
+    public decimal WaitingScore { get; set; }
+    public decimal ReadinessScore { get; set; }
+    public decimal CycleWaitScore { get; set; }
+    public decimal DurationFitScore { get; set; }
+    public decimal TotalScore { get; set; }
 }
