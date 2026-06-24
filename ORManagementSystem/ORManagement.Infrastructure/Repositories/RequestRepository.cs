@@ -1,5 +1,4 @@
-﻿using Azure.Core;
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using ORManagement.Application.DTOs.Requests;
 using ORManagement.Application.Interfaces.Repositories;
 using ORManagement.Infrastructure.Data;
@@ -56,6 +55,23 @@ public class RequestRepository : IRequestRepository
             .FirstOrDefaultAsync(request => request.RequestId == requestId);
     }
 
+    public async Task<CurrentSchedulingCycleDto?> GetCurrentCycleAsync(int hospitalId)
+    {
+        return await _dbContext.SchedulingCycles
+            .Where(cycle =>
+                cycle.HospitalId == hospitalId &&
+                cycle.CycleStatus == "Open")
+            .OrderBy(cycle => cycle.WeekStartDate)
+            .Select(cycle => new CurrentSchedulingCycleDto
+            {
+                CycleId = cycle.CycleId,
+                WeekStartDate = cycle.WeekStartDate.ToDateTime(TimeOnly.MinValue),
+                WeekEndDate = cycle.WeekEndDate.ToDateTime(TimeOnly.MinValue),
+                CycleStatus = cycle.CycleStatus ?? string.Empty
+            })
+            .FirstOrDefaultAsync();
+    }
+
     private IQueryable<OrRequestResponseDto> GetRequestQuery(int hospitalId)
     {
         return
@@ -99,27 +115,49 @@ public class RequestRepository : IRequestRepository
     }
 
     public async Task<int> CreateRequestAsync(
-        int hospitalId,
-        int surgeonId,
-        CreateOrRequestDto request)
+    int hospitalId,
+    int surgeonId,
+    CreateOrRequestDto request)
     {
+        var preferredDate = request.PreferredDate ?? DateTime.UtcNow.Date;
+
+        var preferredQuarter = string.IsNullOrWhiteSpace(request.PreferredQuarter)
+            ? "Flexible"
+            : request.PreferredQuarter.Trim();
+
+        var availableDaysMask = request.AvailableDaysMask ?? 31;
+
+        var priority = request.Priority.Trim();
+        var patientReadiness = request.PatientReadiness.Trim();
+
         var entity = new ORRequest
         {
             HospitalId = hospitalId,
             SurgeonId = surgeonId,
             PatientId = request.PatientId,
-            CycleId = request.Priority == "Emergency" ? null : request.CycleId,
-            OriginalCycleId = request.Priority == "Emergency" ? null : request.CycleId,
+
+            CycleId = priority == "Emergency"
+                ? null
+                : request.CycleId,
+
+            OriginalCycleId = priority == "Emergency"
+                ? null
+                : request.OriginalCycleId ?? request.CycleId,
+
             CyclesWaited = 0,
-            PreferredDate = DateOnly.FromDateTime(request.PreferredDate.Date),
-            PreferredQuarter = request.PreferredQuarter.Trim(),
+
+            PreferredDate = DateOnly.FromDateTime(preferredDate.Date),
+            PreferredQuarter = preferredQuarter,
+
             EstimatedDurationMin = request.EstimatedDurationMin,
             SurgeryType = request.SurgeryType.Trim(),
-            Priority = request.Priority.Trim(),
-            PatientReadiness = request.PatientReadiness.Trim(),
+            Priority = priority,
+            PatientReadiness = patientReadiness,
+
             Remarks = request.Remarks,
             RequestStatus = "PendingReview",
-            AvailableDaysMask = request.AvailableDaysMask,
+            AvailableDaysMask = availableDaysMask,
+
             CreatedAt = DateTime.UtcNow
         };
 
@@ -136,16 +174,17 @@ public class RequestRepository : IRequestRepository
         int modifiedByUserId)
     {
         var entity = await _dbContext.ORRequests
-            .FirstOrDefaultAsync(request =>
-                request.HospitalId == hospitalId &&
-                request.RequestId == requestId);
+            .FirstOrDefaultAsync(orRequest =>
+                orRequest.HospitalId == hospitalId &&
+                orRequest.RequestId == requestId);
 
         if (entity is null)
         {
             return false;
         }
 
-        if (entity.RequestStatus != "PendingReview" && entity.RequestStatus != "Modified")
+        if (entity.RequestStatus != "PendingReview" &&
+            entity.RequestStatus != "Modified")
         {
             return false;
         }
@@ -166,11 +205,11 @@ public class RequestRepository : IRequestRepository
     }
 
     public async Task<bool> UpdateRequestStatusAsync(
-    int hospitalId,
-    int requestId,
-    string status,
-    string? schedulerRemarks,
-    int modifiedByUserId)
+        int hospitalId,
+        int requestId,
+        string status,
+        string? schedulerRemarks,
+        int modifiedByUserId)
     {
         var entity = await _dbContext.ORRequests
             .FirstOrDefaultAsync(request =>
@@ -203,15 +242,16 @@ public class RequestRepository : IRequestRepository
 
         return true;
     }
+
     public async Task<RequestCapacitySummaryDto> GetCapacitySummaryAsync(int hospitalId)
     {
         const decimal defaultSchedulingHours = 100m;
 
         var hardcodedTopSurgeonIds = new List<int>
-    {
-        10,
-        3
-    };
+        {
+            10,
+            3
+        };
 
         var settingValue = await _dbContext.SystemSettings
             .Where(setting =>
@@ -263,28 +303,18 @@ public class RequestRepository : IRequestRepository
             })
             .ToListAsync();
 
-        /*
-            Open/shared allocated capacity:
-            Approved/Scheduled requests from NON-top doctors only.
-            These hours drive Open Capacity planning.
-        */
         var openAllocatedMinutes = approvedOrScheduledRequests
             .Where(request => !hardcodedTopSurgeonIds.Contains(request.SurgeonId))
             .Sum(request => request.EstimatedDurationMin);
 
         var allocatedHourCapacity = Math.Round(openAllocatedMinutes / 60m, 2);
 
-        /*
-            Top recurring doctor demand:
-            Approved/Scheduled requests from hardcoded top doctors.
-            These are shown separately and NOT included in AllocatedHourCapacity.
-        */
         var topSurgeons = await (
             from surgeon in _dbContext.Surgeons
             join user in _dbContext.Users
                 on surgeon.UserId equals user.UserId
-            where surgeon.HospitalId == hospitalId
-                  && hardcodedTopSurgeonIds.Contains(surgeon.SurgeonId)
+            where surgeon.HospitalId == hospitalId &&
+                  hardcodedTopSurgeonIds.Contains(surgeon.SurgeonId)
             select new
             {
                 surgeon.SurgeonId,
@@ -330,6 +360,7 @@ public class RequestRepository : IRequestRepository
             TopRecurringDoctors = topRecurringDoctors
         };
     }
+
     public async Task<bool> DeletePendingRequestAsync(
         int hospitalId,
         int requestId,
@@ -381,14 +412,6 @@ public class RequestRepository : IRequestRepository
         return true;
     }
 
-    public async Task<bool> PatientExistsAsync(int hospitalId, int patientId)
-    {
-        return await _dbContext.Patients
-            .AnyAsync(patient =>
-                patient.HospitalId == hospitalId &&
-                patient.PatientId == patientId &&
-                patient.IsActive);
-    }
     public async Task<bool> RemoveFromWaitlistByRequestIdAsync(int requestId)
     {
         var waitlist = await _dbContext.WaitlistRequests
@@ -405,4 +428,12 @@ public class RequestRepository : IRequestRepository
         return true;
     }
 
+    public async Task<bool> PatientExistsAsync(int hospitalId, int patientId)
+    {
+        return await _dbContext.Patients
+            .AnyAsync(patient =>
+                patient.HospitalId == hospitalId &&
+                patient.PatientId == patientId &&
+                patient.IsActive);
+    }
 }

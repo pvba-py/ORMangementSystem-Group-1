@@ -30,6 +30,34 @@ public class CaseRepository : ICaseRepository
             .OrderBy(surgicalCase => surgicalCase.ScheduledStart)
             .ToListAsync();
     }
+
+    public async Task<bool> SurgeonCaseConflictExistsAsync(
+    int hospitalId,
+    int surgeonId,
+    DateTime scheduledStart,
+    DateTime scheduledEnd,
+    int? excludeSurgeryId = null)
+    {
+        var query =
+            from surgicalCase in _dbContext.SurgicalCases
+            join orRequest in _dbContext.ORRequests
+                on surgicalCase.RequestId equals orRequest.RequestId
+            where surgicalCase.HospitalId == hospitalId
+                  && orRequest.SurgeonId == surgeonId
+                  && surgicalCase.CaseStatus != "Cancelled"
+                  && surgicalCase.ScheduledStart < scheduledEnd
+                  && surgicalCase.ScheduledEnd > scheduledStart
+            select surgicalCase;
+
+        if (excludeSurgeryId.HasValue)
+        {
+            query = query.Where(surgicalCase =>
+                surgicalCase.SurgeryId != excludeSurgeryId.Value);
+        }
+
+        return await query.AnyAsync();
+    }
+
     public async Task<BlockBoundaryDto?> GetBlockBoundaryAsync(
     int hospitalId,
     int blockId)

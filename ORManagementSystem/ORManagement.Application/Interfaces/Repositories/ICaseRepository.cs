@@ -5,6 +5,7 @@ namespace ORManagement.Application.Interfaces.Repositories;
 
 public interface ICaseRepository
 {
+
     Task<List<SurgicalCaseDto>> GetCasesAsync(int hospitalId, string? status);
     Task<List<SurgicalCaseDto>> GetMyCasesAsync(int hospitalId, int surgeonId);
     Task<SurgicalCaseDto?> GetCaseByIdAsync(int hospitalId, int surgeryId);
@@ -42,4 +43,10 @@ public interface ICaseRepository
     Task<bool> MarkRequestScheduledAsync(int hospitalId, int requestId, int modifiedByUserId);
     Task<int?> GetBlockRoomIdAsync(int hospitalId, int blockId);
     Task CalculateUtilizationForBlockAsync(int blockId);
+    Task<bool> SurgeonCaseConflictExistsAsync(
+    int hospitalId,
+    int surgeonId,
+    DateTime scheduledStart,
+    DateTime scheduledEnd,
+    int? excludeSurgeryId = null);
 }

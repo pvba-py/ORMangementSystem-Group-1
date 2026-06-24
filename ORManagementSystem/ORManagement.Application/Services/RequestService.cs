@@ -152,21 +152,52 @@ public class RequestService : IRequestService
         return ServiceResultDto<RequestCapacitySummaryDto>.Ok(summary);
     }
     public async Task<ServiceResultDto<int>> CreateRequestAsync(
-        int hospitalId,
-        int surgeonId,
-        int userId,
-        string roleName,
-        CreateOrRequestDto request,
-        string? ipAddress,
-        string? userAgent)
+    int hospitalId,
+    int surgeonId,
+    int userId,
+    string roleName,
+    CreateOrRequestDto request,
+    string? ipAddress,
+    string? userAgent)
     {
-        var validation = await ValidateCreateRequestAsync(hospitalId, request);
-        if (!validation.Success)
+        const int MondayToFridayMask = 31;
+        const string DefaultPreferredQuarter = "Flexible";
+
+        var currentCycle = await _requestRepository.GetCurrentCycleAsync(hospitalId);
+
+        if (currentCycle is null && request.Priority != "Emergency")
         {
-            return ServiceResultDto<int>.Fail(validation.ErrorCode!, validation.Message!);
+            return ServiceResultDto<int>.Fail(
+                "NO_OPEN_CYCLE",
+                "No open scheduling cycle was found.");
         }
 
-        var requestId = await _requestRepository.CreateRequestAsync(hospitalId, surgeonId, request);
+        request.PreferredDate = currentCycle is not null
+            ? currentCycle.WeekStartDate
+            : DateTime.UtcNow.Date;
+
+        request.PreferredQuarter = DefaultPreferredQuarter;
+        request.AvailableDaysMask = MondayToFridayMask;
+
+        request.CycleId = request.Priority == "Emergency"
+            ? null
+            : currentCycle?.CycleId;
+
+        request.OriginalCycleId = request.CycleId;
+
+        var validation = await ValidateCreateRequestAsync(hospitalId, request);
+
+        if (!validation.Success)
+        {
+            return ServiceResultDto<int>.Fail(
+                validation.ErrorCode!,
+                validation.Message!);
+        }
+
+        var requestId = await _requestRepository.CreateRequestAsync(
+            hospitalId,
+            surgeonId,
+            request);
 
         await _auditRepository.AddAuditLogAsync(new CreateAuditLogDto
         {
@@ -176,15 +207,20 @@ public class RequestService : IRequestService
             Action = "RequestSubmitted",
             Entity = "ORRequests",
             EntityId = requestId,
-            NewValue = request.RequestStatusText(),
+            NewValue = "PendingReview",
             Remarks = "Surgeon submitted OR time request.",
             IpAddress = ipAddress,
             UserAgent = userAgent
         });
 
-        _logger.LogInformation("OR request created. RequestId: {RequestId}, SurgeonId: {SurgeonId}", requestId, surgeonId);
+        _logger.LogInformation(
+            "OR request created. RequestId: {RequestId}, SurgeonId: {SurgeonId}",
+            requestId,
+            surgeonId);
 
-        return ServiceResultDto<int>.Ok(requestId, "Request submitted successfully.");
+        return ServiceResultDto<int>.Ok(
+            requestId,
+            "Request submitted successfully.");
     }
 
     public async Task<ServiceResultDto> UpdateRequestAsync(
@@ -377,35 +413,63 @@ public class RequestService : IRequestService
     }
 
     private async Task<ServiceResultDto> ValidateCreateRequestAsync(
-        int hospitalId,
-        CreateOrRequestDto request)
+    int hospitalId,
+    CreateOrRequestDto request)
     {
-        if (!AllowedQuarters.Contains(request.PreferredQuarter))
+        if (request.PatientId <= 0)
         {
-            return ServiceResultDto.Fail("INVALID_QUARTER", "Preferred quarter must be Q1, Q2, or Flexible.");
+            return ServiceResultDto.Fail(
+                "PATIENT_REQUIRED",
+                "Patient is required.");
         }
 
-        if (!AllowedPriorities.Contains(request.Priority))
-        {
-            return ServiceResultDto.Fail("INVALID_PRIORITY", "Priority must be Emergency, Urgent, or Elective.");
-        }
-
-        if (!AllowedReadiness.Contains(request.PatientReadiness))
-        {
-            return ServiceResultDto.Fail("INVALID_READINESS", "Patient readiness is invalid.");
-        }
-
-        if (!_availabilityWindowEngine.IsValidMask(request.AvailableDaysMask))
-        {
-            return ServiceResultDto.Fail("INVALID_AVAILABLE_DAYS", "Available days selection is invalid.");
-        }
-
-        var patientExists = await _requestRepository.PatientExistsAsync(hospitalId, request.PatientId);
+        var patientExists = await _requestRepository.PatientExistsAsync(
+            hospitalId,
+            request.PatientId);
 
         if (!patientExists)
         {
-            return ServiceResultDto.Fail("PATIENT_NOT_FOUND", "Patient was not found.");
+            return ServiceResultDto.Fail(
+                "PATIENT_NOT_FOUND",
+                "Patient was not found.");
         }
+
+        if (string.IsNullOrWhiteSpace(request.SurgeryType))
+        {
+            return ServiceResultDto.Fail(
+                "SURGERY_TYPE_REQUIRED",
+                "Surgery type is required.");
+        }
+
+        if (request.EstimatedDurationMin <= 0)
+        {
+            return ServiceResultDto.Fail(
+                "INVALID_ESTIMATED_DURATION",
+                "Estimated duration must be greater than zero.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Priority))
+        {
+            return ServiceResultDto.Fail(
+                "PRIORITY_REQUIRED",
+                "Priority is required.");
+        }
+
+        if (!AllowedPriorities.Contains(request.Priority.Trim()))
+        {
+            return ServiceResultDto.Fail(
+                "INVALID_PRIORITY",
+                "Invalid request priority.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.PatientReadiness))
+        {
+            return ServiceResultDto.Fail(
+                "PATIENT_READINESS_REQUIRED",
+                "Patient readiness is required.");
+        }
+
+        
 
         return ServiceResultDto.Ok();
     }

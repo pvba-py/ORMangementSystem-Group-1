@@ -9,27 +9,30 @@ public class CreateOrRequestDto
 
     public int? CycleId { get; set; }
 
-    [Required]
-    public DateTime PreferredDate { get; set; }
+    public int? OriginalCycleId { get; set; }
+
+    public DateTime? PreferredDate { get; set; }
+
+    public string? PreferredQuarter { get; set; }
 
     [Required]
-    public string PreferredQuarter { get; set; } = string.Empty;
-
-    [Range(1, 1440)]
+    [Range(1, 1440, ErrorMessage = "Estimated duration must be between 1 and 1440 minutes.")]
     public int EstimatedDurationMin { get; set; }
 
     [Required]
-    [StringLength(100)]
+    [MaxLength(100)]
     public string SurgeryType { get; set; } = string.Empty;
 
     [Required]
+    [MaxLength(30)]
     public string Priority { get; set; } = string.Empty;
 
     [Required]
+    [MaxLength(30)]
     public string PatientReadiness { get; set; } = string.Empty;
 
-    [StringLength(300)]
-    public string? Remarks { get; set; }
+    public int? AvailableDaysMask { get; set; }
 
-    public int AvailableDaysMask { get; set; } = 31;
+    [MaxLength(500)]
+    public string? Remarks { get; set; }
 }

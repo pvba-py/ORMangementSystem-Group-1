@@ -40,6 +40,7 @@ public interface IRequestRepository
         int hospitalId,
         int requestId,
         int userId);
+    Task<CurrentSchedulingCycleDto?> GetCurrentCycleAsync(int hospitalId);
     Task<bool> RemoveFromWaitlistByRequestIdAsync(int requestId);
     Task<bool> AddToWaitlistIfNotExistsAsync(int requestId);
 

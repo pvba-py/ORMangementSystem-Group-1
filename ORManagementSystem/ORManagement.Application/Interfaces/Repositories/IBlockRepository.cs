@@ -52,7 +52,11 @@ public interface IBlockRepository
         int blockId,
         UpdateBlockAllocationDto request,
         int modifiedByUserId);
+    Task<bool> BlockHasCasesAsync(int hospitalId, int blockId);
 
+    Task<bool> BlockHasReleasedSlotsAsync(int hospitalId, int blockId);
+
+    Task<bool> BlockHasUtilizationRecordsAsync(int blockId);
     Task<bool> CancelBlockAsync(int hospitalId, int blockId, int modifiedByUserId);
 
     Task<int> ReleaseBlockAsync(
@@ -69,4 +73,5 @@ public interface IBlockRepository
     Task<int> CreateBlockAllocationAsync(
     int hospitalId,
     CreateBlockAllocationDto request);
+
 }

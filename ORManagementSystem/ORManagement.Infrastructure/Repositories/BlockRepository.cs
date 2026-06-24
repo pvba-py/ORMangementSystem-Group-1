@@ -385,7 +385,27 @@ public class BlockRepository : IBlockRepository
 
         return await query.AnyAsync();
     }
+    public async Task<bool> BlockHasCasesAsync(int hospitalId, int blockId)
+    {
+        return await _dbContext.SurgicalCases
+            .AnyAsync(surgicalCase =>
+                surgicalCase.HospitalId == hospitalId &&
+                surgicalCase.BlockId == blockId);
+    }
 
+    public async Task<bool> BlockHasReleasedSlotsAsync(int hospitalId, int blockId)
+    {
+        return await _dbContext.ReleasedSlots
+            .AnyAsync(slot =>
+                slot.HospitalId == hospitalId &&
+                slot.BlockId == blockId);
+    }
+
+    public async Task<bool> BlockHasUtilizationRecordsAsync(int blockId)
+    {
+        return await _dbContext.UtilizationRecords
+            .AnyAsync(record => record.BlockId == blockId);
+    }
     public async Task<int> CreateBlockAsync(
         int hospitalId,
         int? surgeonId,
@@ -468,8 +488,8 @@ public class BlockRepository : IBlockRepository
             return false;
         }
 
-        entity.BlockStatus = "Cancelled";
-        entity.ModifiedByUserId = modifiedByUserId;
+
+        _dbContext.BlockAllocations.Remove(entity);
 
         await _dbContext.SaveChangesAsync();
 

@@ -112,8 +112,7 @@ public abstract class ApiControllerBase : ControllerBase
             or "BLOCK_HAS_CASES"
             or "BLOCK_HAS_RELEASED_SLOTS"
             or "BLOCK_HAS_UTILIZATION_RECORDS"
-
-
+            or "SURGEON_CASE_CONFLICT"
                 => BadRequest(errorResponse),
 
             _ => BadRequest(errorResponse)

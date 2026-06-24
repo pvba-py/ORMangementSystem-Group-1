@@ -473,7 +473,32 @@ public class BlockService : IBlockService
         {
             return ServiceResultDto.Fail("BLOCK_NOT_FOUND", "Block was not found.");
         }
+        var hasCases = await _blockRepository.BlockHasCasesAsync(hospitalId, blockId);
 
+        if (hasCases)
+        {
+            return ServiceResultDto.Fail(
+                "BLOCK_HAS_CASES",
+                "This block cannot be deleted because surgical cases are scheduled in it.");
+        }
+
+        var hasReleasedSlots = await _blockRepository.BlockHasReleasedSlotsAsync(hospitalId, blockId);
+
+        if (hasReleasedSlots)
+        {
+            return ServiceResultDto.Fail(
+                "BLOCK_HAS_RELEASED_SLOTS",
+                "This block cannot be deleted because released slots exist for it.");
+        }
+
+        var hasUtilizationRecords = await _blockRepository.BlockHasUtilizationRecordsAsync(blockId);
+
+        if (hasUtilizationRecords)
+        {
+            return ServiceResultDto.Fail(
+                "BLOCK_HAS_UTILIZATION_RECORDS",
+                "This block cannot be deleted because utilization records exist for it.");
+        }
         var cancelled = await _blockRepository.CancelBlockAsync(hospitalId, blockId, userId);
 
         if (!cancelled)
@@ -496,7 +521,7 @@ public class BlockService : IBlockService
             UserAgent = userAgent
         });
 
-        return ServiceResultDto.Ok("Block cancelled successfully.");
+        return ServiceResultDto.Ok("Block deleted successfully.");
     }
 
     public async Task<ServiceResultDto<int>> ReleaseBlockAsync(

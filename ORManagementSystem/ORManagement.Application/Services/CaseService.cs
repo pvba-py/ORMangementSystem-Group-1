@@ -193,6 +193,18 @@ public class CaseService : ICaseService
                 "INVALID_REQUEST_STATUS",
                 "Only approved or modified requests can be scheduled.");
         }
+        var surgeonConflictExists = await _caseRepository.SurgeonCaseConflictExistsAsync(
+    hospitalId,
+    orRequest.SurgeonId,
+    request.ScheduledStart,
+    request.ScheduledEnd);
+
+        if (surgeonConflictExists)
+        {
+            return ServiceResultDto<int>.Fail(
+                "SURGEON_CASE_CONFLICT",
+                "This surgeon already has another case scheduled during the selected time.");
+        }
         var durationValidation = ValidateScheduledDuration(
     request.ScheduledStart,
     request.ScheduledEnd,
@@ -392,13 +404,13 @@ public class CaseService : ICaseService
         return ServiceResultDto.Ok($"Case status updated to {status}.");
     }
     public async Task<ServiceResultDto> UpdateCaseAsync(
-    int hospitalId,
-    int surgeryId,
-    int userId,
-    string roleName,
-    UpdateCaseRequestDto request,
-    string? ipAddress,
-    string? userAgent)
+     int hospitalId,
+     int surgeryId,
+     int userId,
+     string roleName,
+     UpdateCaseRequestDto request,
+     string? ipAddress,
+     string? userAgent)
     {
         if (request.ScheduledEnd <= request.ScheduledStart)
         {
@@ -428,15 +440,31 @@ public class CaseService : ICaseService
                 "REQUEST_NOT_FOUND",
                 "Related OR request was not found.");
         }
+
         var durationValidation = ValidateScheduledDuration(
-    request.ScheduledStart,
-    request.ScheduledEnd,
-    orRequest.EstimatedDurationMin);
+            request.ScheduledStart,
+            request.ScheduledEnd,
+            orRequest.EstimatedDurationMin);
 
         if (!durationValidation.Success)
         {
             return durationValidation;
         }
+
+        var surgeonConflictExists = await _caseRepository.SurgeonCaseConflictExistsAsync(
+            hospitalId,
+            orRequest.SurgeonId,
+            request.ScheduledStart,
+            request.ScheduledEnd,
+            surgeryId);
+
+        if (surgeonConflictExists)
+        {
+            return ServiceResultDto.Fail(
+                "SURGEON_CASE_CONFLICT",
+                "This surgeon already has another case scheduled during the selected time.");
+        }
+
         var blockBoundary = await _caseRepository.GetBlockBoundaryAsync(
             hospitalId,
             existingCase.BlockId);
@@ -488,7 +516,7 @@ public class CaseService : ICaseService
         {
             return ServiceResultDto.Fail(
                 "CASE_CONFLICT",
-                "Updated time conflicts with another surgical case.");
+                "Updated time conflicts with another surgical case in the selected block.");
         }
 
         var updated = await _caseRepository.UpdateCaseAsync(
