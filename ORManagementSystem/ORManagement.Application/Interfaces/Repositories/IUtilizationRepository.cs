@@ -25,6 +25,31 @@ public interface IUtilizationRepository
     Task<bool> BlockExistsAsync(int hospitalId, int blockId);
 
     Task CalculateBlockUtilizationAsync(int blockId);
+    Task<List<ORRoomUtilizationRecordDto>> GetORRoomUtilizationRecordsAsync(
+    int hospitalId,
+    DateTime? fromDate,
+    DateTime? toDate,
+    int? roomId,
+    string? status);
+
+    Task<ORRoomUtilizationSummaryDto> GetORRoomUtilizationSummaryAsync(
+        int hospitalId,
+        DateTime? fromDate,
+        DateTime? toDate);
+
+    Task<List<UnderutilizedORRoomDto>> GetUnderutilizedORRoomsAsync(
+        int hospitalId,
+        DateTime? fromDate,
+        DateTime? toDate);
+
+    Task<bool> ORRoomExistsAsync(
+        int hospitalId,
+        int roomId);
+
+    Task<int> CalculateORRoomWeeklyUtilizationAsync(
+        int hospitalId,
+        int? roomId,
+        DateTime weekStartDate);
 
     Task<List<int>> GetBlockIdsForDateRangeAsync(
         int hospitalId,

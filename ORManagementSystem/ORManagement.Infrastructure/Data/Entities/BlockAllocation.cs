@@ -39,7 +39,7 @@ public partial class BlockAllocation
 
     public virtual ICollection<ReleasedSlot> ReleasedSlots { get; set; } = new List<ReleasedSlot>();
 
-    public virtual Surgeon? Surgeon { get; set; }
+    public virtual Surgeon Surgeon { get; set; } = null!;
 
     public virtual ICollection<SurgicalCase> SurgicalCases { get; set; } = new List<SurgicalCase>();
 

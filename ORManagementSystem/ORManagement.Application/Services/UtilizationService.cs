@@ -48,6 +48,223 @@ public class UtilizationService : IUtilizationService
 
         return ServiceResultDto<List<UtilizationRecordDto>>.Ok(records);
     }
+    public async Task<ServiceResultDto<List<ORRoomUtilizationRecordDto>>> GetORRoomUtilizationRecordsAsync(
+    int hospitalId,
+    DateTime? fromDate,
+    DateTime? toDate,
+    int? roomId,
+    string? status)
+    {
+        if (fromDate.HasValue && toDate.HasValue && fromDate.Value.Date > toDate.Value.Date)
+        {
+            return ServiceResultDto<List<ORRoomUtilizationRecordDto>>.Fail(
+                "INVALID_DATE_RANGE",
+                "From date cannot be after To date.");
+        }
+
+        var records = await _utilizationRepository.GetORRoomUtilizationRecordsAsync(
+            hospitalId,
+            fromDate,
+            toDate,
+            roomId,
+            status);
+
+        return ServiceResultDto<List<ORRoomUtilizationRecordDto>>.Ok(records);
+    }
+
+    public async Task<ServiceResultDto<ORRoomUtilizationSummaryDto>> GetORRoomUtilizationSummaryAsync(
+        int hospitalId,
+        DateTime? fromDate,
+        DateTime? toDate)
+    {
+        if (fromDate.HasValue && toDate.HasValue && fromDate.Value.Date > toDate.Value.Date)
+        {
+            return ServiceResultDto<ORRoomUtilizationSummaryDto>.Fail(
+                "INVALID_DATE_RANGE",
+                "From date cannot be after To date.");
+        }
+
+        var summary = await _utilizationRepository.GetORRoomUtilizationSummaryAsync(
+            hospitalId,
+            fromDate,
+            toDate);
+
+        return ServiceResultDto<ORRoomUtilizationSummaryDto>.Ok(summary);
+    }
+
+    public async Task<ServiceResultDto<List<UnderutilizedORRoomDto>>> GetUnderutilizedORRoomsAsync(
+        int hospitalId,
+        DateTime? fromDate,
+        DateTime? toDate)
+    {
+        if (fromDate.HasValue && toDate.HasValue && fromDate.Value.Date > toDate.Value.Date)
+        {
+            return ServiceResultDto<List<UnderutilizedORRoomDto>>.Fail(
+                "INVALID_DATE_RANGE",
+                "From date cannot be after To date.");
+        }
+
+        var rooms = await _utilizationRepository.GetUnderutilizedORRoomsAsync(
+            hospitalId,
+            fromDate,
+            toDate);
+
+        return ServiceResultDto<List<UnderutilizedORRoomDto>>.Ok(rooms);
+    }
+
+    public async Task<ServiceResultDto<int>> CalculateORRoomWeeklyUtilizationAsync(
+        int hospitalId,
+        int userId,
+        string roleName,
+        CalculateORRoomUtilizationRequestDto request,
+        string? ipAddress,
+        string? userAgent)
+    {
+        if (!request.WeekStartDate.HasValue)
+        {
+            return ServiceResultDto<int>.Fail(
+                "WEEK_START_DATE_REQUIRED",
+                "WeekStartDate is required.");
+        }
+
+        var weekStartDate = request.WeekStartDate.Value.Date;
+
+        if (weekStartDate.DayOfWeek != DayOfWeek.Monday)
+        {
+            return ServiceResultDto<int>.Fail(
+                "INVALID_WEEK_START_DATE",
+                "WeekStartDate must be a Monday.");
+        }
+
+        if (request.ORRoomId.HasValue)
+        {
+            var roomExists = await _utilizationRepository.ORRoomExistsAsync(
+                hospitalId,
+                request.ORRoomId.Value);
+
+            if (!roomExists)
+            {
+                return ServiceResultDto<int>.Fail(
+                    "OR_ROOM_NOT_FOUND",
+                    "OR room was not found.");
+            }
+        }
+
+        var calculatedCount = await _utilizationRepository.CalculateORRoomWeeklyUtilizationAsync(
+            hospitalId,
+            request.ORRoomId,
+            weekStartDate);
+
+        await _auditRepository.AddAuditLogAsync(new CreateAuditLogDto
+        {
+            HospitalId = hospitalId,
+            UserId = userId,
+            RoleName = roleName,
+            Action = "ORRoomWeeklyUtilizationCalculated",
+            Entity = "ORRoomUtilizationRecords",
+            EntityId = request.ORRoomId,
+            NewValue = calculatedCount.ToString(),
+            Remarks = request.ORRoomId.HasValue
+                ? $"OR room weekly utilization calculated for room {request.ORRoomId.Value}, week {weekStartDate:yyyy-MM-dd} to {weekStartDate.AddDays(4):yyyy-MM-dd}."
+                : $"OR room weekly utilization calculated for all rooms, week {weekStartDate:yyyy-MM-dd} to {weekStartDate.AddDays(4):yyyy-MM-dd}.",
+            IpAddress = ipAddress,
+            UserAgent = userAgent
+        });
+
+        _logger.LogInformation(
+            "OR room weekly utilization calculated. Count: {CalculatedCount}, UserId: {UserId}, WeekStartDate: {WeekStartDate}",
+            calculatedCount,
+            userId,
+            weekStartDate);
+
+        return ServiceResultDto<int>.Ok(
+            calculatedCount,
+            "OR room weekly utilization calculation completed successfully.");
+    }
+
+    public async Task<ServiceResultDto<ORRoomWeeklyReportDto>> GenerateORRoomWeeklyReportAsync(
+        int hospitalId,
+        int userId,
+        string roleName,
+        GenerateORRoomWeeklyReportRequestDto request,
+        string? ipAddress,
+        string? userAgent)
+    {
+        if (!request.WeekStartDate.HasValue)
+        {
+            return ServiceResultDto<ORRoomWeeklyReportDto>.Fail(
+                "WEEK_START_DATE_REQUIRED",
+                "WeekStartDate is required.");
+        }
+
+        var weekStartDate = request.WeekStartDate.Value.Date;
+
+        if (weekStartDate.DayOfWeek != DayOfWeek.Monday)
+        {
+            return ServiceResultDto<ORRoomWeeklyReportDto>.Fail(
+                "INVALID_WEEK_START_DATE",
+                "WeekStartDate must be a Monday.");
+        }
+
+        var weekEndDate = weekStartDate.AddDays(4);
+
+        var calculatedCount = await _utilizationRepository.CalculateORRoomWeeklyUtilizationAsync(
+            hospitalId,
+            null,
+            weekStartDate);
+
+        var records = await _utilizationRepository.GetORRoomUtilizationRecordsAsync(
+            hospitalId,
+            weekStartDate,
+            weekStartDate,
+            null,
+            null);
+
+        var summary = await _utilizationRepository.GetORRoomUtilizationSummaryAsync(
+            hospitalId,
+            weekStartDate,
+            weekStartDate);
+
+        var underutilizedRooms = await _utilizationRepository.GetUnderutilizedORRoomsAsync(
+            hospitalId,
+            weekStartDate,
+            weekStartDate);
+
+        var report = new ORRoomWeeklyReportDto
+        {
+            WeekStartDate = weekStartDate,
+            WeekEndDate = weekEndDate,
+            GeneratedAt = DateTime.UtcNow,
+            CalculatedRooms = calculatedCount,
+            Summary = summary,
+            Rooms = records,
+            UnderutilizedRooms = underutilizedRooms
+        };
+
+        await _auditRepository.AddAuditLogAsync(new CreateAuditLogDto
+        {
+            HospitalId = hospitalId,
+            UserId = userId,
+            RoleName = roleName,
+            Action = "ORRoomWeeklyUtilizationReportGenerated",
+            Entity = "ORRoomUtilizationRecords",
+            EntityId = null,
+            NewValue = calculatedCount.ToString(),
+            Remarks = $"OR room weekly utilization report generated for week {weekStartDate:yyyy-MM-dd} to {weekEndDate:yyyy-MM-dd}.",
+            IpAddress = ipAddress,
+            UserAgent = userAgent
+        });
+
+        _logger.LogInformation(
+            "OR room weekly utilization report generated. Count: {CalculatedCount}, UserId: {UserId}, WeekStartDate: {WeekStartDate}",
+            calculatedCount,
+            userId,
+            weekStartDate);
+
+        return ServiceResultDto<ORRoomWeeklyReportDto>.Ok(
+            report,
+            "OR room weekly utilization report generated successfully.");
+    }
 
     public async Task<ServiceResultDto<UtilizationSummaryDto>> GetSummaryAsync(
         int hospitalId,
