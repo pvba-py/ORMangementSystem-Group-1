@@ -45,4 +45,12 @@ public interface IRoomService
         DateTime fromDate,
         DateTime toDate,
         int? roomId);
+
+
+    Task<ServiceResultDto<List<MyCalendarDto>>> GetMyCalendarAsync(
+        int hospitalId,
+        int userId,
+        DateTime fromDate,
+        DateTime toDate);
+
 }

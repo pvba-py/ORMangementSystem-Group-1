@@ -10,7 +10,7 @@ public interface ISchedulingCycleService
     Task<ServiceResultDto<List<RankedRequestDto>>> GetRankedRequestsAsync(
         int hospitalId,
         int cycleId);
-
+    Task<ServiceResultDto<List<SchedulingCycleDto>>> GetCyclesAsync(int hospitalId);
     Task<ServiceResultDto> CutoffCycleAsync(
         int hospitalId,
         int cycleId,

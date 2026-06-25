@@ -189,7 +189,233 @@ public class RoomRepository : IRoomRepository
 
         return true;
     }
+    public async Task<List<MyCalendarDto>> GetMyCalendarAsync(
+     int hospitalId,
+     int userId,
+     DateTime fromDate,
+     DateTime toDate)
+    {
+        var surgeonId = await _dbContext.Surgeons
+            .Where(surgeon =>
+                surgeon.HospitalId == hospitalId &&
+                surgeon.UserId == userId &&
+                surgeon.IsActive)
+            .Select(surgeon => (int?)surgeon.SurgeonId)
+            .FirstOrDefaultAsync();
 
+        if (surgeonId is null)
+        {
+            return new List<MyCalendarDto>();
+        }
+
+        var currentSurgeonId = surgeonId.Value;
+
+        var fromDateOnly = DateOnly.FromDateTime(fromDate.Date);
+        var toDateOnly = DateOnly.FromDateTime(toDate.Date);
+
+        var assignedBlockIds = await _dbContext.BlockAllocations
+            .Where(block =>
+                block.HospitalId == hospitalId &&
+                block.SurgeonId == currentSurgeonId &&
+                block.BlockDate >= fromDateOnly &&
+                block.BlockDate <= toDateOnly &&
+                block.BlockStatus != "Cancelled")
+            .Select(block => block.BlockId)
+            .ToListAsync();
+
+        var caseBlockIds = await _dbContext.SurgicalCases
+            .Join(
+                _dbContext.ORRequests,
+                surgicalCase => surgicalCase.RequestId,
+                orRequest => orRequest.RequestId,
+                (surgicalCase, orRequest) => new
+                {
+                    surgicalCase,
+                    orRequest
+                })
+            .Where(item =>
+                item.surgicalCase.HospitalId == hospitalId &&
+                item.orRequest.SurgeonId == currentSurgeonId &&
+                item.surgicalCase.CaseStatus != "Cancelled" &&
+                item.surgicalCase.ScheduledStart.Date >= fromDate.Date &&
+                item.surgicalCase.ScheduledStart.Date <= toDate.Date)
+            .Select(item => item.surgicalCase.BlockId)
+            .Distinct()
+            .ToListAsync();
+
+        var blockIds = assignedBlockIds
+            .Concat(caseBlockIds)
+            .Distinct()
+            .ToList();
+
+        if (blockIds.Count == 0)
+        {
+            return new List<MyCalendarDto>();
+        }
+
+        var blocks = await _dbContext.BlockAllocations
+            .Where(block =>
+                block.HospitalId == hospitalId &&
+                blockIds.Contains(block.BlockId) &&
+                block.BlockDate >= fromDateOnly &&
+                block.BlockDate <= toDateOnly &&
+                block.BlockStatus != "Cancelled")
+            .OrderBy(block => block.BlockDate)
+            .ThenBy(block => block.StartTime)
+            .ToListAsync();
+
+        var roomIds = blocks
+            .Select(block => block.ORRoomId)
+            .Distinct()
+            .ToList();
+
+        var rooms = await _dbContext.OperatingRooms
+            .Where(room =>
+                room.HospitalId == hospitalId &&
+                roomIds.Contains(room.ORRoomId))
+            .ToDictionaryAsync(
+                room => room.ORRoomId,
+                room => room);
+
+        var cases = await _dbContext.SurgicalCases
+            .Where(surgicalCase =>
+                surgicalCase.HospitalId == hospitalId &&
+                blockIds.Contains(surgicalCase.BlockId) &&
+                surgicalCase.CaseStatus != "Cancelled")
+            .ToListAsync();
+
+        var requestIds = cases
+            .Select(surgicalCase => surgicalCase.RequestId)
+            .Distinct()
+            .ToList();
+
+        var requests = await _dbContext.ORRequests
+            .Where(orRequest => requestIds.Contains(orRequest.RequestId))
+            .ToDictionaryAsync(
+                orRequest => orRequest.RequestId,
+                orRequest => orRequest);
+
+        var currentSurgeonCases = cases
+            .Where(surgicalCase =>
+                requests.TryGetValue(surgicalCase.RequestId, out var orRequest) &&
+                orRequest.SurgeonId == currentSurgeonId)
+            .ToList();
+
+        var patientIds = requests.Values
+            .Where(orRequest => orRequest.SurgeonId == currentSurgeonId)
+            .Select(orRequest => orRequest.PatientId)
+            .Distinct()
+            .ToList();
+
+        var patients = await _dbContext.Patients
+            .Where(patient => patientIds.Contains(patient.PatientId))
+            .ToDictionaryAsync(
+                patient => patient.PatientId,
+                patient => patient);
+
+        var surgeonIds = blocks
+            .Where(block => block.SurgeonId.HasValue)
+            .Select(block => block.SurgeonId!.Value)
+            .Concat(requests.Values.Select(orRequest => orRequest.SurgeonId))
+            .Distinct()
+            .ToList();
+
+        var surgeonNames = await _dbContext.Surgeons
+            .Where(surgeon => surgeonIds.Contains(surgeon.SurgeonId))
+            .Join(
+                _dbContext.Users,
+                surgeon => surgeon.UserId,
+                user => user.UserId,
+                (surgeon, user) => new
+                {
+                    surgeon.SurgeonId,
+                    SurgeonName = user.FullName
+                })
+            .ToDictionaryAsync(
+                item => item.SurgeonId,
+                item => item.SurgeonName);
+
+        var result = new List<MyCalendarDto>();
+
+        foreach (var block in blocks)
+        {
+            if (!rooms.TryGetValue(block.ORRoomId, out var room))
+            {
+                continue;
+            }
+
+            var blockCases = currentSurgeonCases
+                .Where(surgicalCase => surgicalCase.BlockId == block.BlockId)
+                .OrderBy(surgicalCase => surgicalCase.ScheduledStart)
+                .ToList();
+
+            var blockOwnerName = block.SurgeonId.HasValue &&
+                                 surgeonNames.TryGetValue(block.SurgeonId.Value, out var blockSurgeonName)
+                ? blockSurgeonName
+                : $"{block.BlockType} Capacity";
+
+            if (blockCases.Count == 0)
+            {
+                result.Add(new MyCalendarDto
+                {
+                    BlockId = block.BlockId,
+                    ORRoomId = room.ORRoomId,
+                    RoomName = room.RoomName,
+                    BlockDate = block.BlockDate.ToDateTime(TimeOnly.MinValue),
+                    StartTime = block.StartTime,
+                    EndTime = block.EndTime,
+                    BlockType = block.BlockType,
+                    BlockStatus = block.BlockStatus,
+                    SurgeonId = block.SurgeonId,
+                    SurgeonName = blockOwnerName
+                });
+
+                continue;
+            }
+
+            foreach (var surgicalCase in blockCases)
+            {
+                var orRequest = requests[surgicalCase.RequestId];
+
+                patients.TryGetValue(orRequest.PatientId, out var patient);
+
+                var caseSurgeonName = surgeonNames.TryGetValue(orRequest.SurgeonId, out var surgeonName)
+                    ? surgeonName
+                    : blockOwnerName;
+
+                result.Add(new MyCalendarDto
+                {
+                    BlockId = block.BlockId,
+                    ORRoomId = room.ORRoomId,
+                    RoomName = room.RoomName,
+                    BlockDate = block.BlockDate.ToDateTime(TimeOnly.MinValue),
+                    StartTime = block.StartTime,
+                    EndTime = block.EndTime,
+                    BlockType = block.BlockType,
+                    BlockStatus = block.BlockStatus,
+
+                    SurgeonId = orRequest.SurgeonId,
+                    SurgeonName = caseSurgeonName,
+
+                    SurgeryId = surgicalCase.SurgeryId,
+                    PatientId = orRequest.PatientId,
+                    PatientName = patient?.FullName,
+                    PatientMrn = patient?.MRN,
+                    SurgeryType = orRequest.SurgeryType,
+
+                    ScheduledStart = surgicalCase.ScheduledStart,
+                    ScheduledEnd = surgicalCase.ScheduledEnd,
+                    CaseStatus = surgicalCase.CaseStatus
+                });
+            }
+        }
+
+        return result
+            .OrderBy(item => item.BlockDate)
+            .ThenBy(item => item.StartTime)
+            .ThenBy(item => item.ScheduledStart)
+            .ToList();
+    }
     public async Task<List<CalendarItemDto>> GetCalendarAsync(
      int hospitalId,
      DateTime fromDate,

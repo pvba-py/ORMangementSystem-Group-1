@@ -162,4 +162,10 @@ public class SchedulingCycleService : ISchedulingCycleService
 
         return ServiceResultDto.Ok("Cycle published successfully.");
     }
+    public async Task<ServiceResultDto<List<SchedulingCycleDto>>> GetCyclesAsync(int hospitalId)
+    {
+        var cycles = await _cycleRepository.GetCyclesAsync(hospitalId);
+
+        return ServiceResultDto<List<SchedulingCycleDto>>.Ok(cycles);
+    }
 }

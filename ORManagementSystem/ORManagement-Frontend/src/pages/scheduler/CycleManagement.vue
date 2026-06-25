@@ -5,7 +5,7 @@ import LoadingSpinner from '../../components/common/LoadingSpinner.vue'
 import EmptyState from '../../components/common/EmptyState.vue'
 import StatusBadge from '../../components/common/StatusBadge.vue'
 import {
-  getCurrentCycle,
+  getCycles,
   cutoffCycle,
   publishCycle
 } from '../../services/cycleService'
@@ -16,7 +16,8 @@ import { showToast } from '../../utils/toast'
 const loading = ref(false)
 const actionLoading = ref(false)
 
-const currentCycle = ref(null)
+const cycles = ref([])
+const selectedCycle = ref(null)
 const calendar = ref([])
 
 const calendarHours = Array.from({ length: 24 }, (_, index) => index)
@@ -81,19 +82,16 @@ const overlapsHourInclusive = (startMinutes, endMinutes, hour) => {
   const slotStart = hour * 60
   const slotEnd = (hour + 1) * 60
 
-  /*
-    Inclusive behavior:
-    08:00–10:00 appears in 08, 09, and 10 rows.
-  */
+  // 08:00–10:00 appears in 08, 09, and 10 rows.
   return startMinutes <= slotEnd && endMinutes >= slotStart
 }
 
 const cycleWeekDays = computed(() => {
-  if (!currentCycle.value?.weekStartDate) {
+  if (!selectedCycle.value?.weekStartDate) {
     return []
   }
 
-  const startDate = parseDateOnly(currentCycle.value.weekStartDate)
+  const startDate = parseDateOnly(selectedCycle.value.weekStartDate)
 
   if (!startDate) {
     return []
@@ -182,16 +180,25 @@ const getBlockTypeClass = blockType => {
   }
 }
 
+const isSelectedCycle = cycle => {
+  return Number(selectedCycle.value?.cycleId) === Number(cycle.cycleId)
+}
+
+const selectCycle = async cycle => {
+  selectedCycle.value = cycle
+  await loadCalendar()
+}
+
 const loadCalendar = async () => {
-  if (!currentCycle.value?.weekStartDate || !currentCycle.value?.weekEndDate) {
+  if (!selectedCycle.value?.weekStartDate || !selectedCycle.value?.weekEndDate) {
     calendar.value = []
     return
   }
 
   try {
     const response = await getCalendar({
-      fromDate: currentCycle.value.weekStartDate.substring(0, 10),
-      toDate: currentCycle.value.weekEndDate.substring(0, 10)
+      fromDate: selectedCycle.value.weekStartDate.substring(0, 10),
+      toDate: selectedCycle.value.weekEndDate.substring(0, 10)
     })
 
     calendar.value = response.data || []
@@ -205,14 +212,40 @@ const loadCalendar = async () => {
   }
 }
 
-const loadCycle = async () => {
+const chooseDefaultCycle = preferredCycleId => {
+  if (!cycles.value.length) {
+    selectedCycle.value = null
+    return
+  }
+
+  if (preferredCycleId) {
+    const sameCycle = cycles.value.find(
+      cycle => Number(cycle.cycleId) === Number(preferredCycleId)
+    )
+
+    if (sameCycle) {
+      selectedCycle.value = sameCycle
+      return
+    }
+  }
+
+  selectedCycle.value =
+    cycles.value.find(cycle => cycle.cycleStatus === 'Cutoff') ||
+    cycles.value.find(cycle => cycle.cycleStatus === 'Scheduling') ||
+    cycles.value.find(cycle => cycle.cycleStatus === 'Open') ||
+    cycles.value[0]
+}
+
+const loadCycles = async (preferredCycleId = null) => {
   loading.value = true
 
   try {
-    const response = await getCurrentCycle()
-    currentCycle.value = response.data || null
+    const response = await getCycles()
+    cycles.value = response.data || []
 
-    if (currentCycle.value?.cycleId) {
+    chooseDefaultCycle(preferredCycleId)
+
+    if (selectedCycle.value?.cycleId) {
       await loadCalendar()
     } else {
       calendar.value = []
@@ -221,7 +254,7 @@ const loadCycle = async () => {
     const message =
       err?.response?.data?.message ||
       err?.response?.data?.title ||
-      'Failed to load current cycle.'
+      'Failed to load cycles.'
 
     showToast(message, 'error')
   } finally {
@@ -230,18 +263,21 @@ const loadCycle = async () => {
 }
 
 const handleCutoff = async () => {
-  if (!currentCycle.value?.cycleId) return
+  if (!selectedCycle.value?.cycleId) return
 
-  if (!confirm(`Cutoff cycle #${currentCycle.value.cycleId}?`)) {
+  if (!confirm(`Cutoff cycle #${selectedCycle.value.cycleId}?`)) {
     return
   }
 
   actionLoading.value = true
 
   try {
-    await cutoffCycle(currentCycle.value.cycleId)
+    const cycleId = selectedCycle.value.cycleId
+
+    await cutoffCycle(cycleId)
     showToast('Cycle cutoff completed successfully.', 'success')
-    await loadCycle()
+
+    await loadCycles(cycleId)
   } catch (err) {
     const message =
       err?.response?.data?.message ||
@@ -255,18 +291,21 @@ const handleCutoff = async () => {
 }
 
 const handlePublish = async () => {
-  if (!currentCycle.value?.cycleId) return
+  if (!selectedCycle.value?.cycleId) return
 
-  if (!confirm(`Publish cycle #${currentCycle.value.cycleId}?`)) {
+  if (!confirm(`Publish cycle #${selectedCycle.value.cycleId}?`)) {
     return
   }
 
   actionLoading.value = true
 
   try {
-    await publishCycle(currentCycle.value.cycleId)
+    const cycleId = selectedCycle.value.cycleId
+
+    await publishCycle(cycleId)
     showToast('Cycle published successfully.', 'success')
-    await loadCycle()
+
+    await loadCycles(cycleId)
   } catch (err) {
     const message =
       err?.response?.data?.message ||
@@ -279,21 +318,21 @@ const handlePublish = async () => {
   }
 }
 
-onMounted(loadCycle)
+onMounted(() => loadCycles())
 </script>
 
 <template>
   <div>
     <PageHeader
       title="Cycle Management"
-      subtitle="Manage the current weekly scheduling cycle and view the OR schedule calendar"
+      subtitle="View scheduling cycles and inspect each cycle's OR calendar"
       icon="bi-arrow-repeat"
     >
       <template #actions>
         <button
           class="btn btn-outline-primary me-2"
           :disabled="loading || actionLoading"
-          @click="loadCycle"
+          @click="loadCycles(selectedCycle?.cycleId)"
         >
           <i class="bi bi-arrow-clockwise me-1"></i>
           Refresh
@@ -304,32 +343,109 @@ onMounted(loadCycle)
     <LoadingSpinner v-if="loading" />
 
     <div v-else>
-      <div v-if="currentCycle" class="page-card mb-4">
+      <!-- Cycle List -->
+      <div class="page-card mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div>
+            <h5 class="mb-0">
+              <i class="bi bi-calendar-range me-2 text-primary"></i>
+              Scheduling Cycles
+            </h5>
+            <small class="text-muted">
+              Select a cycle to view its blocks and scheduled cases.
+            </small>
+          </div>
+
+          <span class="text-muted small">
+            Total: {{ cycles.length }}
+          </span>
+        </div>
+
+        <EmptyState
+          v-if="cycles.length === 0"
+          title="No cycles"
+          message="No scheduling cycles were found."
+          icon="bi-calendar-x"
+        />
+
+        <div v-else class="table-responsive">
+          <table class="table table-hover align-middle">
+            <thead>
+              <tr>
+                <th>Cycle</th>
+                <th>Week</th>
+                <th>Cutoff At</th>
+                <th>Status</th>
+                <th class="text-end">Action</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              <tr
+                v-for="cycle in cycles"
+                :key="cycle.cycleId"
+                :class="{ 'selected-cycle-row': isSelectedCycle(cycle) }"
+              >
+                <td>
+                  <strong>#{{ cycle.cycleId }}</strong>
+                </td>
+
+                <td>
+                  {{ formatDate(cycle.weekStartDate) }}
+                  -
+                  {{ formatDate(cycle.weekEndDate) }}
+                </td>
+
+                <td>
+                  {{ formatDateTime(cycle.cutoffAt) }}
+                </td>
+
+                <td>
+                  <StatusBadge :status="cycle.cycleStatus" />
+                </td>
+
+                <td class="text-end">
+                  <button
+                    class="btn btn-sm"
+                    :class="isSelectedCycle(cycle) ? 'btn-primary' : 'btn-outline-primary'"
+                    @click="selectCycle(cycle)"
+                  >
+                    {{ isSelectedCycle(cycle) ? 'Selected' : 'View Calendar' }}
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Selected Cycle Summary -->
+      <div v-if="selectedCycle" class="page-card mb-4">
         <div class="row g-3 align-items-center">
           <div class="col-md-3">
-            <small class="text-muted">Cycle ID</small>
-            <h5 class="mb-0">#{{ currentCycle.cycleId }}</h5>
+            <small class="text-muted">Selected Cycle</small>
+            <h5 class="mb-0">#{{ selectedCycle.cycleId }}</h5>
           </div>
 
           <div class="col-md-3">
             <small class="text-muted">Week</small>
             <h6 class="mb-0">
-              {{ formatDate(currentCycle.weekStartDate) }}
+              {{ formatDate(selectedCycle.weekStartDate) }}
               -
-              {{ formatDate(currentCycle.weekEndDate) }}
+              {{ formatDate(selectedCycle.weekEndDate) }}
             </h6>
           </div>
 
           <div class="col-md-3">
             <small class="text-muted">Cutoff At</small>
             <h6 class="mb-0">
-              {{ formatDateTime(currentCycle.cutoffAt) }}
+              {{ formatDateTime(selectedCycle.cutoffAt) }}
             </h6>
           </div>
 
           <div class="col-md-3">
             <small class="text-muted d-block">Status</small>
-            <StatusBadge :status="currentCycle.cycleStatus" />
+            <StatusBadge :status="selectedCycle.cycleStatus" />
           </div>
         </div>
 
@@ -338,7 +454,7 @@ onMounted(loadCycle)
         <div class="d-flex justify-content-end gap-2">
           <button
             class="btn btn-warning"
-            :disabled="actionLoading || currentCycle.cycleStatus !== 'Open'"
+            :disabled="actionLoading || selectedCycle.cycleStatus !== 'Open'"
             @click="handleCutoff"
           >
             <span
@@ -352,7 +468,7 @@ onMounted(loadCycle)
             class="btn btn-success"
             :disabled="
               actionLoading ||
-              !['Cutoff', 'Scheduling'].includes(currentCycle.cycleStatus)
+              !['Cutoff', 'Scheduling'].includes(selectedCycle.cycleStatus)
             "
             @click="handlePublish"
           >
@@ -367,13 +483,13 @@ onMounted(loadCycle)
 
       <EmptyState
         v-else
-        title="No current cycle"
-        message="No open scheduling cycle was found."
+        title="No selected cycle"
+        message="Select a scheduling cycle to view its calendar."
         icon="bi-calendar-x"
       />
 
       <!-- Weekly OR Calendar -->
-      <div v-if="currentCycle" class="page-card">
+      <div v-if="selectedCycle" class="page-card">
         <div class="d-flex justify-content-between align-items-center mb-3">
           <div>
             <h5 class="mb-0">
@@ -381,7 +497,7 @@ onMounted(loadCycle)
               Weekly OR Calendar
             </h5>
             <small class="text-muted">
-              Blocks and scheduled cases for the selected cycle week.
+              Blocks and scheduled cases for selected cycle #{{ selectedCycle.cycleId }}.
             </small>
           </div>
 
@@ -516,6 +632,10 @@ onMounted(loadCycle)
 </template>
 
 <style scoped>
+.selected-cycle-row {
+  background: #eef5ff;
+}
+
 .weekly-calendar-wrapper {
   overflow-x: auto;
   border: 2px solid #cbd5e1;

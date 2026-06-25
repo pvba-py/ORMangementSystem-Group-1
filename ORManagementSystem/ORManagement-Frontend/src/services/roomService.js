@@ -24,3 +24,6 @@ export const deleteRoom = (id) => {
 export const getCalendar = (params = {}) => {
   return api.get('/calendar', { params })
 }
+export const getMyCalendar = (params = {}) => {
+  return api.get('/calendar/my', { params })
+}

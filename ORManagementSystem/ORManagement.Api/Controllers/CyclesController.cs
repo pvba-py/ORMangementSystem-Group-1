@@ -49,6 +49,21 @@ public class CyclesController : ApiControllerBase
         return Ok(result.Data);
     }
 
+    [HttpGet]
+    [Authorize(Roles = "ORScheduler")]
+    public async Task<IActionResult> GetCycles()
+    {
+        var result = await _cycleService.GetCyclesAsync(
+            GetCurrentHospitalIdOrDefault());
+
+        if (!result.Success)
+        {
+            return MapError(result);
+        }
+
+        return Ok(result.Data);
+    }
+
     [HttpPut("{id:int}/cutoff")]
     [Authorize(Roles = "ORScheduler")]
     public async Task<IActionResult> CutoffCycle(int id)

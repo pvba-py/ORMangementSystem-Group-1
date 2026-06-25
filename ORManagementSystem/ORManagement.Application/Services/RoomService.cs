@@ -209,4 +209,25 @@ public class RoomService : IRoomService
 
         return ServiceResultDto<List<CalendarItemDto>>.Ok(items);
     }
+    public async Task<ServiceResultDto<List<MyCalendarDto>>> GetMyCalendarAsync(
+    int hospitalId,
+    int userId,
+    DateTime fromDate,
+    DateTime toDate)
+    {
+        if (fromDate.Date > toDate.Date)
+        {
+            return ServiceResultDto<List<MyCalendarDto>>.Fail(
+                "INVALID_DATE_RANGE",
+                "From date cannot be after To date.");
+        }
+
+        var items = await _roomRepository.GetMyCalendarAsync(
+            hospitalId,
+            userId,
+            fromDate,
+            toDate);
+
+        return ServiceResultDto<List<MyCalendarDto>>.Ok(items);
+    }
 }

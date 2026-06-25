@@ -209,4 +209,35 @@ public class RoomsController : ApiControllerBase
 
         return Ok(result.Data);
     }
+    [HttpGet("calendar/my")]
+    [Authorize(Roles = "Surgeon")]
+    public async Task<IActionResult> GetMyCalendar(
+    [FromQuery] DateTime fromDate,
+    [FromQuery] DateTime toDate)
+    {
+        var userId = GetCurrentUserId();
+
+        if (userId is null)
+        {
+            return Unauthorized(new
+            {
+                success = false,
+                errorCode = "INVALID_TOKEN",
+                message = "Invalid token."
+            });
+        }
+
+        var result = await _roomService.GetMyCalendarAsync(
+            GetCurrentHospitalIdOrDefault(),
+            userId.Value,
+            fromDate,
+            toDate);
+
+        if (!result.Success)
+        {
+            return MapError(result);
+        }
+
+        return Ok(result.Data);
+    }
 }

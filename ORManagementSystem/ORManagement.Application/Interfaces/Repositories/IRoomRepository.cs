@@ -21,4 +21,9 @@ public interface IRoomRepository
     Task<bool> SoftDeleteRoomAsync(int hospitalId, int roomId);
 
     Task<List<CalendarItemDto>> GetCalendarAsync(int hospitalId, DateTime fromDate, DateTime toDate, int? roomId);
+    Task<List<MyCalendarDto>> GetMyCalendarAsync(
+    int hospitalId,
+    int userId,
+    DateTime fromDate,
+    DateTime toDate);
 }

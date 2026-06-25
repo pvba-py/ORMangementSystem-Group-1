@@ -7,10 +7,9 @@ import Register from '../pages/auth/Register.vue'
 import AppLayout from '../layouts/AppLayout.vue'
 
 import SurgeonDashboard from '../pages/surgeon/SurgeonDashboard.vue'
-import MyRequests from '../pages/surgeon/MyRequests.vue'
 import RequestORTime from '../pages/surgeon/RequestORTime.vue'
+import MyRequests from '../pages/surgeon/MyRequests.vue'
 import MyBlocks from '../pages/surgeon/MyBlocks.vue'
-import MyCases from '../pages/surgeon/MyCases.vue'
 
 import SchedulerDashboard from '../pages/scheduler/SchedulerDashboard.vue'
 import RoomsCalendar from '../pages/scheduler/RoomsCalendar.vue'
@@ -79,12 +78,6 @@ const routes = [
         component: MyBlocks,
         meta: { role: 'Surgeon' }
       },
-      {
-        path: 'surgeon/cases',
-        component: MyCases,
-        meta: { role: 'Surgeon' }
-      },
-
       {
         path: 'scheduler/dashboard',
         component: SchedulerDashboard,

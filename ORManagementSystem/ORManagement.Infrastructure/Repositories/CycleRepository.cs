@@ -51,7 +51,22 @@ public class CycleRepository : ICycleRepository
             })
             .FirstOrDefaultAsync();
     }
-
+    public async Task<List<SchedulingCycleDto>> GetCyclesAsync(int hospitalId)
+    {
+        return await _dbContext.SchedulingCycles
+            .Where(cycle => cycle.HospitalId == hospitalId)
+            .OrderBy(cycle => cycle.WeekStartDate)
+            .Select(cycle => new SchedulingCycleDto
+            {
+                CycleId = cycle.CycleId,
+                HospitalId = cycle.HospitalId,
+                WeekStartDate = cycle.WeekStartDate.ToDateTime(TimeOnly.MinValue),
+                WeekEndDate = cycle.WeekEndDate.ToDateTime(TimeOnly.MinValue),
+                CutoffAt = cycle.CutoffAt,
+                CycleStatus = cycle.CycleStatus
+            })
+            .ToListAsync();
+    }
     public async Task<List<RankedRequestDto>> GetRankedRequestsAsync(int cycleId)
     {
         var rankedRequests = new List<RankedRequestDto>();

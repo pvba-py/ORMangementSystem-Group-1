@@ -32,11 +32,6 @@ const surgeonLinks = [
     label: 'My Blocks',
     icon: 'bi-calendar-week',
     to: '/app/surgeon/blocks'
-  },
-  {
-    label: 'My Cases',
-    icon: 'bi-hospital',
-    to: '/app/surgeon/cases'
   }
 ]
 
@@ -47,7 +42,7 @@ const schedulerLinks = [
     to: '/app/scheduler/dashboard'
   },
   {
-    label: 'Rooms & Calendar',
+    label: 'OR Rooms',
     icon: 'bi-calendar3',
     to: '/app/scheduler/rooms-calendar'
   },
@@ -57,7 +52,7 @@ const schedulerLinks = [
     to: '/app/scheduler/requests'
   },
   {
-    label: 'Cycles',
+    label: 'Cycle Calendar',
     icon: 'bi-arrow-repeat',
     to: '/app/scheduler/cycles'
   },

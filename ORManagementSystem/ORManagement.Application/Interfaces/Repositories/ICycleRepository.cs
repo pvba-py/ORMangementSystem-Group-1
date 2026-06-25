@@ -8,7 +8,7 @@ public interface ICycleRepository
     Task<SchedulingCycleDto?> GetCycleByIdAsync(int hospitalId, int cycleId);
 
     Task<List<RankedRequestDto>> GetRankedRequestsAsync(int cycleId);
-
+    Task<List<SchedulingCycleDto>> GetCyclesAsync(int hospitalId);
     Task<bool> CutoffCycleAsync(int hospitalId, int cycleId);
     Task<bool> PublishCycleAsync(int hospitalId, int cycleId, int modifiedByUserId);
 }
