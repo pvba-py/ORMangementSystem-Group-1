@@ -1,12 +1,10 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace ORManagement.Application.DTOs.Blocks;
-
 public class GenerateBlocksRequestDto
 {
-    [Required]
+    [Required(ErrorMessage = "From Date is required.")]
     public DateTime FromDate { get; set; }
 
-    [Required]
+    [Required(ErrorMessage = "To Date is required.")]
     public DateTime ToDate { get; set; }
 }

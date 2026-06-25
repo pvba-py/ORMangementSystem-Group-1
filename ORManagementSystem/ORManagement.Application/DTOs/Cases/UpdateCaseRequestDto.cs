@@ -1,12 +1,10 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace ORManagement.Application.DTOs.Cases;
-
 public class UpdateCaseRequestDto
 {
-    [Required]
+    [Required(ErrorMessage = "Scheduled start time is required.")]
     public DateTime ScheduledStart { get; set; }
 
-    [Required]
+    [Required(ErrorMessage = "Scheduled end time is required.")]
     public DateTime ScheduledEnd { get; set; }
 }

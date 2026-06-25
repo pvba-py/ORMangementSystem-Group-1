@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using ORManagement.Api.Middleware;
@@ -27,6 +28,27 @@ builder.Services.AddCors(options =>
 
 //Register Controllers
 builder.Services.AddControllers();
+
+
+
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+    options.InvalidModelStateResponseFactory = context =>
+    {
+        var errors = context.ModelState
+            .Where(x => x.Value.Errors.Count > 0)
+            .SelectMany(x => x.Value.Errors)
+            .Select(x => x.ErrorMessage)
+            .ToList();
+
+        return new BadRequestObjectResult(new
+        {
+            success = false,
+            message = errors.FirstOrDefault(),
+            errors = errors
+        });
+    };
+});
 
 //Register the DbContext with the connection string from appsettings.json
 builder.Services.AddDbContext<ORManagementDbContext>(options =>

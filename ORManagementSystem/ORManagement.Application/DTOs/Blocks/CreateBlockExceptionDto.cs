@@ -1,12 +1,10 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace ORManagement.Application.DTOs.Blocks;
-
 public class CreateBlockExceptionDto
 {
-    [Required]
+    [Required(ErrorMessage = "Skip Date is required.")]
     public DateTime SkipDate { get; set; }
 
-    [StringLength(200)]
+    [StringLength(200, ErrorMessage = "Reason cannot exceed 200 characters.")]
     public string? Reason { get; set; }
 }
