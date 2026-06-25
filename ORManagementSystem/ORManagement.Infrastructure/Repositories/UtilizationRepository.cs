@@ -3,8 +3,6 @@ using Microsoft.EntityFrameworkCore;
 using ORManagement.Application.DTOs.Utilization;
 using ORManagement.Application.Interfaces.Repositories;
 using ORManagement.Infrastructure.Data;
-using ORManagement.Infrastructure.Data.Entities;
-using static Microsoft.EntityFrameworkCore.DbLoggerCategory;
 
 namespace ORManagement.Infrastructure.Repositories;
 
@@ -29,10 +27,6 @@ public class UtilizationRepository : IUtilizationRepository
             from utilization in _dbContext.UtilizationRecords
             join block in _dbContext.BlockAllocations
                 on utilization.BlockId equals block.BlockId
-            join surgeon in _dbContext.Surgeons
-                on block.SurgeonId equals surgeon.SurgeonId
-            join user in _dbContext.Users
-                on surgeon.UserId equals user.UserId
             join room in _dbContext.OperatingRooms
                 on block.ORRoomId equals room.ORRoomId
             where block.HospitalId == hospitalId
@@ -40,9 +34,17 @@ public class UtilizationRepository : IUtilizationRepository
             {
                 utilization,
                 block,
-                surgeon,
-                user,
-                room
+                room,
+                SurgeonName =
+                    block.SurgeonId == null
+                        ? null
+                        : (
+                            from surgeon in _dbContext.Surgeons
+                            join user in _dbContext.Users
+                                on surgeon.UserId equals user.UserId
+                            where surgeon.SurgeonId == block.SurgeonId
+                            select user.FullName
+                        ).FirstOrDefault()
             };
 
         if (fromDate.HasValue)
@@ -74,6 +76,7 @@ public class UtilizationRepository : IUtilizationRepository
 
         return await query
             .OrderByDescending(item => item.block.BlockDate)
+            .ThenBy(item => item.block.StartTime)
             .Select(item => new UtilizationRecordDto
             {
                 UtilizationId = item.utilization.UtilizationId,
@@ -81,7 +84,7 @@ public class UtilizationRepository : IUtilizationRepository
                 BlockId = item.utilization.BlockId,
 
                 SurgeonId = item.block.SurgeonId,
-                SurgeonName = item.user.FullName,
+                SurgeonName = item.SurgeonName ?? item.block.BlockType + " Capacity",
 
                 ORRoomId = item.block.ORRoomId,
                 RoomName = item.room.RoomName,
@@ -97,6 +100,198 @@ public class UtilizationRepository : IUtilizationRepository
             })
             .ToListAsync();
     }
+
+    public async Task<List<ORRoomUtilizationRecordDto>> GetORRoomUtilizationRecordsAsync(
+        int hospitalId,
+        DateTime? fromDate,
+        DateTime? toDate,
+        int? roomId,
+        string? status)
+    {
+        var query =
+            from utilization in _dbContext.ORRoomUtilizationRecords
+            join room in _dbContext.OperatingRooms
+                on utilization.ORRoomId equals room.ORRoomId
+            where utilization.HospitalId == hospitalId
+                  && room.HospitalId == hospitalId
+            select new
+            {
+                utilization,
+                room
+            };
+
+        if (fromDate.HasValue)
+        {
+            var from = DateOnly.FromDateTime(fromDate.Value.Date);
+            query = query.Where(item => item.utilization.WeekStartDate >= from);
+        }
+
+        if (toDate.HasValue)
+        {
+            var to = DateOnly.FromDateTime(toDate.Value.Date);
+            query = query.Where(item => item.utilization.WeekStartDate <= to);
+        }
+
+        if (roomId.HasValue)
+        {
+            query = query.Where(item => item.utilization.ORRoomId == roomId.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            query = query.Where(item => item.utilization.UtilStatus == status);
+        }
+
+        return await query
+            .OrderByDescending(item => item.utilization.WeekStartDate)
+            .ThenBy(item => item.room.RoomName)
+            .Select(item => new ORRoomUtilizationRecordDto
+            {
+                ORRoomUtilizationId = item.utilization.ORRoomUtilizationId,
+                HospitalId = item.utilization.HospitalId,
+                ORRoomId = item.utilization.ORRoomId,
+                RoomName = item.room.RoomName,
+                WeekStartDate = item.utilization.WeekStartDate.ToDateTime(TimeOnly.MinValue),
+                WeekEndDate = item.utilization.WeekEndDate.ToDateTime(TimeOnly.MinValue),
+                AllocatedMinutes = item.utilization.AllocatedMinutes,
+                UsedMinutes = item.utilization.UsedMinutes,
+                UtilizationPercent = item.utilization.UtilizationPct ?? 0,
+                UtilizationStatus = item.utilization.UtilStatus,
+                CalculatedAt = item.utilization.CalculatedAt
+            })
+            .ToListAsync();
+    }
+
+    public async Task<ORRoomUtilizationSummaryDto> GetORRoomUtilizationSummaryAsync(
+        int hospitalId,
+        DateTime? fromDate,
+        DateTime? toDate)
+    {
+        var records = await GetORRoomUtilizationRecordsAsync(
+            hospitalId,
+            fromDate,
+            toDate,
+            null,
+            null);
+
+        if (records.Count == 0)
+        {
+            return new ORRoomUtilizationSummaryDto();
+        }
+
+        var totalAllocatedMinutes = records.Sum(record => record.AllocatedMinutes);
+        var totalUsedMinutes = records.Sum(record => record.UsedMinutes);
+
+        return new ORRoomUtilizationSummaryDto
+        {
+            TotalRooms = records.Count,
+            TotalAllocatedMinutes = totalAllocatedMinutes,
+            TotalUsedMinutes = totalUsedMinutes,
+            AverageUtilizationPercent = totalAllocatedMinutes == 0
+                ? 0
+                : Math.Round(totalUsedMinutes * 100m / totalAllocatedMinutes, 2),
+            GoodRooms = records.Count(record => record.UtilizationStatus == "Good"),
+            ModerateRooms = records.Count(record => record.UtilizationStatus == "Moderate"),
+            UnderutilizedRooms = records.Count(record => record.UtilizationStatus == "Underutilized"),
+            UnusedRooms = records.Count(record => record.UtilizationStatus == "Unused")
+        };
+    }
+
+    public async Task<List<UnderutilizedORRoomDto>> GetUnderutilizedORRoomsAsync(
+        int hospitalId,
+        DateTime? fromDate,
+        DateTime? toDate)
+    {
+        var records = await GetORRoomUtilizationRecordsAsync(
+            hospitalId,
+            fromDate,
+            toDate,
+            null,
+            null);
+
+        return records
+            .Where(record =>
+                record.UtilizationStatus == "Underutilized" ||
+                record.UtilizationStatus == "Unused")
+            .OrderBy(record => record.UtilizationPercent)
+            .ThenBy(record => record.RoomName)
+            .Select(record => new UnderutilizedORRoomDto
+            {
+                ORRoomUtilizationId = record.ORRoomUtilizationId,
+                ORRoomId = record.ORRoomId,
+                RoomName = record.RoomName,
+                WeekStartDate = record.WeekStartDate,
+                WeekEndDate = record.WeekEndDate,
+                AllocatedMinutes = record.AllocatedMinutes,
+                UsedMinutes = record.UsedMinutes,
+                UtilizationPercent = record.UtilizationPercent,
+                UtilizationStatus = record.UtilizationStatus
+            })
+            .ToList();
+    }
+
+    public async Task<bool> ORRoomExistsAsync(
+        int hospitalId,
+        int roomId)
+    {
+        return await _dbContext.OperatingRooms
+            .AnyAsync(room =>
+                room.HospitalId == hospitalId &&
+                room.ORRoomId == roomId &&
+                room.IsActive);
+    }
+
+    public async Task<int> CalculateORRoomWeeklyUtilizationAsync(
+        int hospitalId,
+        int? roomId,
+        DateTime weekStartDate)
+    {
+        var hospitalIdParameter = new SqlParameter("@HospitalId", hospitalId);
+
+        var roomIdParameter = new SqlParameter("@ORRoomId", System.Data.SqlDbType.Int)
+        {
+            Value = roomId.HasValue ? roomId.Value : DBNull.Value
+        };
+
+        var weekStartDateParameter = new SqlParameter("@WeekStartDate", System.Data.SqlDbType.Date)
+        {
+            Value = weekStartDate.Date
+        };
+
+        await _dbContext.Database.ExecuteSqlRawAsync(
+            "EXEC analytics.usp_CalculateORRoomWeeklyUtilization @HospitalId, @ORRoomId, @WeekStartDate",
+            hospitalIdParameter,
+            roomIdParameter,
+            weekStartDateParameter);
+
+        var weekStartDateOnly = DateOnly.FromDateTime(weekStartDate.Date);
+
+        if (roomId.HasValue)
+        {
+            return await _dbContext.ORRoomUtilizationRecords
+                .CountAsync(record =>
+                    record.HospitalId == hospitalId &&
+                    record.ORRoomId == roomId.Value &&
+                    record.WeekStartDate == weekStartDateOnly);
+        }
+
+        return await _dbContext.ORRoomUtilizationRecords
+            .Join(
+                _dbContext.OperatingRooms,
+                utilization => utilization.ORRoomId,
+                room => room.ORRoomId,
+                (utilization, room) => new
+                {
+                    utilization,
+                    room
+                })
+            .CountAsync(item =>
+                item.utilization.HospitalId == hospitalId &&
+                item.utilization.WeekStartDate == weekStartDateOnly &&
+                item.room.HospitalId == hospitalId &&
+                item.room.IsActive);
+    }
+
     public async Task<UtilizationSummaryDto> GetSummaryAsync(
         int hospitalId,
         DateTime? fromDate,

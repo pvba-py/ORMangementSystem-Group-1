@@ -30,4 +30,37 @@ public interface IUtilizationService
         CalculateUtilizationRequestDto request,
         string? ipAddress,
         string? userAgent);
+
+    Task<ServiceResultDto<List<ORRoomUtilizationRecordDto>>> GetORRoomUtilizationRecordsAsync(
+        int hospitalId,
+        DateTime? fromDate,
+        DateTime? toDate,
+        int? roomId,
+        string? status);
+
+    Task<ServiceResultDto<ORRoomUtilizationSummaryDto>> GetORRoomUtilizationSummaryAsync(
+        int hospitalId,
+        DateTime? fromDate,
+        DateTime? toDate);
+
+    Task<ServiceResultDto<List<UnderutilizedORRoomDto>>> GetUnderutilizedORRoomsAsync(
+        int hospitalId,
+        DateTime? fromDate,
+        DateTime? toDate);
+
+    Task<ServiceResultDto<int>> CalculateORRoomWeeklyUtilizationAsync(
+        int hospitalId,
+        int userId,
+        string roleName,
+        CalculateORRoomUtilizationRequestDto request,
+        string? ipAddress,
+        string? userAgent);
+
+    Task<ServiceResultDto<ORRoomWeeklyReportDto>> GenerateORRoomWeeklyReportAsync(
+        int hospitalId,
+        int userId,
+        string roleName,
+        GenerateORRoomWeeklyReportRequestDto request,
+        string? ipAddress,
+        string? userAgent);
 }

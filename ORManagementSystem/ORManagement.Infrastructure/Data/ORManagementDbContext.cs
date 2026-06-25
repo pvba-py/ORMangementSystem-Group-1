@@ -22,6 +22,7 @@ public partial class ORManagementDbContext : DbContext
 
     public virtual DbSet<ForecastRecommendation> ForecastRecommendations { get; set; }
 
+    public virtual DbSet<ORRoomUtilizationRecord> ORRoomUtilizationRecords { get; set; }
     public virtual DbSet<Hospital> Hospitals { get; set; }
 
     public virtual DbSet<ORRequest> ORRequests { get; set; }
@@ -93,6 +94,46 @@ public partial class ORManagementDbContext : DbContext
             entity.HasOne(d => d.User).WithMany(p => p.AuditLogs)
                 .HasForeignKey(d => d.UserId)
                 .HasConstraintName("FK_AuditLogs_Users");
+        });
+        modelBuilder.Entity<ORRoomUtilizationRecord>(entity =>
+        {
+            entity.HasKey(e => e.ORRoomUtilizationId);
+
+            entity.ToTable("ORRoomUtilizationRecords", "analytics");
+
+            entity.HasIndex(
+                    e => new
+                    {
+                        e.HospitalId,
+                        e.ORRoomId,
+                        e.WeekStartDate
+                    },
+                    "UQ_ORRoomUtilizationRecords_Hosp_Room_Week")
+                .IsUnique();
+
+            entity.Property(e => e.CalculatedAt)
+                .HasDefaultValueSql("(sysutcdatetime())");
+
+            entity.Property(e => e.UtilStatus)
+                .HasMaxLength(20);
+
+            entity.Property(e => e.UtilizationPct)
+                .HasComputedColumnSql(
+                    "((CONVERT([decimal](9,2),[UsedMinutes])*(100.0))/nullif([AllocatedMinutes],(0)))",
+                    true)
+                .HasColumnType("numeric(25, 14)");
+
+            entity.HasOne(d => d.Hospital)
+                .WithMany()
+                .HasForeignKey(d => d.HospitalId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_ORRoomUtilizationRecords_Hospitals");
+
+            entity.HasOne(d => d.ORRoom)
+                .WithMany()
+                .HasForeignKey(d => d.ORRoomId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_ORRoomUtilizationRecords_OperatingRooms");
         });
 
         modelBuilder.Entity<BlockAllocation>(entity =>
