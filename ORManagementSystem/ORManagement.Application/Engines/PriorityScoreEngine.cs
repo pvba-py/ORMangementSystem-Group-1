@@ -103,7 +103,23 @@ public class PriorityScoreEngine
             _ => 25m
         };
     }
+    public decimal CalculateHybridScore(
+    decimal ruleBasedScore,
+    decimal clinicalTextScore,
+    decimal ruleWeight = 0.70m,
+    decimal clinicalWeight = 0.30m)
+    {
+        var normalizedRuleScore = Math.Clamp(ruleBasedScore, 0, 100);
+        var normalizedClinicalScore = Math.Clamp(clinicalTextScore, 0, 100);
+
+        var finalScore =
+            (normalizedRuleScore * ruleWeight) +
+            (normalizedClinicalScore * clinicalWeight);
+
+        return Math.Round(Math.Clamp(finalScore, 0, 100), 2);
+    }
 }
+
 
 public class PriorityScoreBreakdown
 {

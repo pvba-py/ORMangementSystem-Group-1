@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using ORManagement.Infrastructure.AI;
 using ORManagement.Api.Middleware;
+using ORManagement.Application.DTOs.Requests;
 using ORManagement.Application.Engines;
 using ORManagement.Application.Interfaces.Repositories;
 using ORManagement.Application.Interfaces.Services;
@@ -57,6 +59,14 @@ builder.Services.AddScoped<ForecastRecommendationEngine>();
 // Requests
 builder.Services.AddScoped<IRequestRepository, RequestRepository>();
 builder.Services.AddScoped<IRequestService, RequestService>();
+
+// Clinical Text Scoring: ONNX ClinicalBERT first, fallback keyword scorer if ONNX fails
+builder.Services.Configure<ClinicalScoringOptions>(
+    builder.Configuration.GetSection("ClinicalScoring"));
+
+builder.Services.AddSingleton<FallbackClinicalKeywordScoringService>();
+
+builder.Services.AddSingleton<IClinicalTextScoringService, ClinicalBertOnnxTextScoringService>();
 
 // Cycles
 builder.Services.AddScoped<ICycleRepository, CycleRepository>();

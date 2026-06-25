@@ -16,6 +16,7 @@ public class RequestService : IRequestService
     private readonly AvailabilityWindowEngine _availabilityWindowEngine;
     private readonly PriorityScoreEngine _priorityScoreEngine;
     private readonly ILogger<RequestService> _logger;
+    private readonly IClinicalTextScoringService _clinicalTextScoringService;
 
     private static readonly HashSet<string> AllowedQuarters = new()
     {
@@ -42,13 +43,15 @@ public class RequestService : IRequestService
         IAuditRepository auditRepository,
         AvailabilityWindowEngine availabilityWindowEngine,
         PriorityScoreEngine priorityScoreEngine,
-        ILogger<RequestService> logger)
+        ILogger<RequestService> logger,
+        IClinicalTextScoringService clinicalTextScoringService)
     {
         _requestRepository = requestRepository;
         _auditRepository = auditRepository;
         _availabilityWindowEngine = availabilityWindowEngine;
         _priorityScoreEngine = priorityScoreEngine;
         _logger = logger;
+        _clinicalTextScoringService = clinicalTextScoringService;
     }
 
     public async Task<ServiceResultDto<List<OrRequestResponseDto>>> GetRequestsAsync(
@@ -373,10 +376,12 @@ public class RequestService : IRequestService
     }
 
     public async Task<ServiceResultDto<RequestScoreDto>> GetRequestScoreAsync(
-    int hospitalId,
-    int requestId)
+        int hospitalId,
+        int requestId)
     {
-        var request = await _requestRepository.GetRequestByIdAsync(hospitalId, requestId);
+        var request = await _requestRepository.GetRequestByIdAsync(
+            hospitalId,
+            requestId);
 
         if (request is null)
         {
@@ -391,6 +396,18 @@ public class RequestService : IRequestService
             request.CreatedAt,
             request.CyclesWaited,
             durationFitScore: null);
+        _logger.LogInformation(
+    "Clinical scoring service in use: {ServiceType}",
+    _clinicalTextScoringService.GetType().FullName);
+        var clinicalResult = await _clinicalTextScoringService.ScoreAsync(
+            request.Remarks,
+            request.SurgeryType,
+            request.Priority,
+            request.PatientReadiness);
+
+        var finalScore = _priorityScoreEngine.CalculateHybridScore(
+            breakdown.TotalScore,
+            clinicalResult.ClinicalScore);
 
         const int starvationThreshold = 3;
 
@@ -404,14 +421,21 @@ public class RequestService : IRequestService
             CycleWaitScore = breakdown.CycleWaitScore,
             DurationFitScore = breakdown.DurationFitScore,
 
-            TotalScore = breakdown.TotalScore,
+            RuleBasedScore = breakdown.TotalScore,
+            ClinicalTextScore = clinicalResult.ClinicalScore,
+            FinalPriorityScore = finalScore,
+
+            ClinicalTextExplanation = clinicalResult.Explanation,
+            ClinicalScoringModel = clinicalResult.ModelName,
+            ClinicalScoringUsedFallback = clinicalResult.UsedFallback,
+
+            TotalScore = finalScore,
 
             IsStarved = request.CyclesWaited >= starvationThreshold
         };
 
         return ServiceResultDto<RequestScoreDto>.Ok(score);
     }
-
     private async Task<ServiceResultDto> ValidateCreateRequestAsync(
     int hospitalId,
     CreateOrRequestDto request)

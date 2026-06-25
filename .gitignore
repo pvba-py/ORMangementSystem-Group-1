@@ -14,3 +14,7 @@ obj/
 ## OS files
 Thumbs.db
 .DS_Store
+
+# ClinicalBERT ONNX model files - keep local only# ClinicalBERTSystem/ORManagement.Api/Models/ClinicalBert/*.onnx.data
+ORManagementSystem/ORManagement.Api/Models/ClinicalBert/tokenizer.model
+ORManagementSystem/ORManagement.Api/Models/ClinicalBert/*.onnx

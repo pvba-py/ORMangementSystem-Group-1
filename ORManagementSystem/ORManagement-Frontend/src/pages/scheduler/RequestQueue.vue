@@ -1,6 +1,4 @@
 <script setup>
-import { onMounted, ref } from 'vue'
-import PageHeader from '../../components/common/PageHeader.vue'
 import LoadingSpinner from '../../components/common/LoadingSpinner.vue'
 import EmptyState from '../../components/common/EmptyState.vue'
 import StatusBadge from '../../components/common/StatusBadge.vue'
@@ -12,9 +10,10 @@ import {
   getRequestScore,
   getRequestCapacitySummary
 } from '../../services/requestService'
+import { onMounted, ref } from 'vue'
+import PageHeader from '../../components/common/PageHeader.vue'
 import { formatDate } from '../../utils/formatters'
 import { showToast } from '../../utils/toast'
-
 
 const capacitySummary = ref({
   schedulingHourCapacity: 100,
@@ -41,6 +40,7 @@ const statusForm = ref({
 
 const getScoreValue = score => {
   return (
+    score?.finalPriorityScore ??
     score?.totalScore ??
     score?.rankScore ??
     score?.score ??
@@ -55,6 +55,26 @@ const formatScore = value => {
   }
 
   return Number(value).toFixed(2)
+}
+
+const getClinicalModelLabel = score => {
+  if (!score) {
+    return '-'
+  }
+
+  return score.clinicalScoringUsedFallback
+    ? 'Fallback'
+    : 'ClinicalBERT'
+}
+
+const getClinicalModelBadgeClass = score => {
+  if (!score) {
+    return 'bg-secondary'
+  }
+
+  return score.clinicalScoringUsedFallback
+    ? 'bg-warning text-dark'
+    : 'bg-info text-dark'
 }
 
 const loadCapacitySummary = async () => {
@@ -106,6 +126,7 @@ const loadRequests = async () => {
           }
         } catch (err) {
           console.error(`Failed to load score for request ${request.requestId}:`, err)
+
           return {
             ...request,
             requestScore: null,
@@ -178,11 +199,13 @@ const submitStatusUpdate = async () => {
     })
 
     showToast('Request status updated successfully.', 'success')
-closePanel()
-await Promise.all([
-  loadRequests(),
-  loadCapacitySummary()
-])
+
+    closePanel()
+
+    await Promise.all([
+      loadRequests(),
+      loadCapacitySummary()
+    ])
   } catch (err) {
     const message =
       err?.response?.data?.message ||
@@ -343,12 +366,10 @@ onMounted(async () => {
                 <th>Surgeon</th>
                 <th>Patient</th>
                 <th>Surgery</th>
-                <th>Preferred</th>
                 <th>Duration</th>
                 <th>Priority</th>
                 <th>Readiness</th>
-                <th>Availability</th>
-                <th>Score</th>
+                <th>Final Score</th>
                 <th>Status</th>
                 <th class="text-end">Actions</th>
               </tr>
@@ -367,22 +388,26 @@ onMounted(async () => {
 
                 <td>{{ request.surgeryType }}</td>
 
-                <td>
-                  <div>{{ formatDate(request.preferredDate) }}</div>
-                  <small class="text-muted">{{ request.preferredQuarter }}</small>
-                </td>
-
                 <td>{{ request.estimatedDurationMin }} min</td>
                 <td>{{ request.priority }}</td>
                 <td>{{ request.patientReadiness }}</td>
-                <td>{{ request.availableDaysDisplay }}</td>
 
                 <td>
-                  <strong
+                  <div
                     v-if="request.requestScore !== null && request.requestScore !== undefined"
+                    class="score-cell"
                   >
-                    {{ formatScore(request.requestScore) }}
-                  </strong>
+                    <strong>{{ formatScore(request.requestScore) }}</strong>
+
+                    <span
+                      v-if="request.scoreBreakdown"
+                      class="badge ms-1"
+                      :class="getClinicalModelBadgeClass(request.scoreBreakdown)"
+                    >
+                      {{ getClinicalModelLabel(request.scoreBreakdown) }}
+                    </span>
+                  </div>
+
                   <span v-else class="text-muted">-</span>
                 </td>
 
@@ -455,18 +480,24 @@ onMounted(async () => {
                   <strong>{{ selectedRequest.surgeryType }}</strong>
                 </div>
 
-                <div class="d-flex justify-content-between mb-2">
-                  <span>Preferred</span>
-                  <strong>
-                    {{ formatDate(selectedRequest.preferredDate) }}
-                    · {{ selectedRequest.preferredQuarter }}
-                  </strong>
-                </div>
+                
 
-                <div class="d-flex justify-content-between">
+                <div class="d-flex justify-content-between mb-2">
                   <span>Duration</span>
                   <strong>{{ selectedRequest.estimatedDurationMin }} min</strong>
                 </div>
+
+                <div class="d-flex justify-content-between mb-2">
+                  <span>Priority</span>
+                  <strong>{{ selectedRequest.priority }}</strong>
+                </div>
+
+                <div class="d-flex justify-content-between mb-2">
+                  <span>Readiness</span>
+                  <strong>{{ selectedRequest.patientReadiness }}</strong>
+                </div>
+
+                
               </div>
             </div>
           </div>
@@ -475,12 +506,45 @@ onMounted(async () => {
             <h6 class="mb-3">Request Score</h6>
 
             <div v-if="scoreResult" class="score-box">
+              <div class="score-highlight mb-3">
+                <div>
+                  <div class="text-muted small">Final Hybrid Priority Score</div>
+                  <div class="final-score">
+                    {{ formatScore(scoreResult.finalPriorityScore ?? scoreResult.totalScore) }}
+                    <span class="final-score-unit">/ 100</span>
+                  </div>
+                </div>
+
+                <span
+                  class="badge"
+                  :class="getClinicalModelBadgeClass(scoreResult)"
+                >
+                  {{ getClinicalModelLabel(scoreResult) }}
+                </span>
+              </div>
+
+              <div class="score-formula mb-3">
+                Final Score = 0.7 × Rule Score + 0.3 × Clinical Text Score
+              </div>
+
               <div class="d-flex justify-content-between mb-2">
-                <span>Total Score</span>
-                <strong>{{ formatScore(getScoreValue(scoreResult)) }} / 100</strong>
+                <span>Rule-Based Score</span>
+                <strong>{{ formatScore(scoreResult.ruleBasedScore) }}</strong>
+              </div>
+
+              <div class="d-flex justify-content-between mb-2">
+                <span>Clinical Text Score</span>
+                <strong>{{ formatScore(scoreResult.clinicalTextScore) }}</strong>
+              </div>
+
+              <div class="d-flex justify-content-between mb-2">
+                <span>Clinical Model</span>
+                <strong>{{ scoreResult.clinicalScoringModel || '-' }}</strong>
               </div>
 
               <hr />
+
+              <h6 class="mb-2">Rule Score Breakdown</h6>
 
               <div class="d-flex justify-content-between mb-2">
                 <span>Weighted Priority</span>
@@ -512,24 +576,17 @@ onMounted(async () => {
 
               <hr />
 
-              <div class="d-flex justify-content-between mb-2">
-                <span>Priority</span>
-                <strong>{{ selectedRequest.priority }}</strong>
+              <h6 class="mb-2">Clinical Text Explanation</h6>
+
+              <div class="clinical-explanation">
+                {{ scoreResult.clinicalTextExplanation || 'No clinical text explanation available.' }}
               </div>
 
-              <div class="d-flex justify-content-between mb-2">
-                <span>Patient Readiness</span>
-                <strong>{{ selectedRequest.patientReadiness }}</strong>
-              </div>
+              <hr />
 
               <div class="d-flex justify-content-between mb-2">
                 <span>Cycles Waited</span>
                 <strong>{{ selectedRequest.cyclesWaited }}</strong>
-              </div>
-
-              <div class="d-flex justify-content-between mb-2">
-                <span>Availability</span>
-                <strong>{{ selectedRequest.availableDaysDisplay }}</strong>
               </div>
 
               <div class="d-flex justify-content-between">
@@ -589,12 +646,55 @@ onMounted(async () => {
   padding: 16px;
   background: #f9fafb;
 }
-.score-box,
-.summary-box {
-  border: 1px solid #e5e7eb;
+
+.score-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.score-highlight {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  border: 1px solid #cbd5e1;
   border-radius: 12px;
-  padding: 16px;
-  background: #f9fafb;
+  background: #ffffff;
+  padding: 14px;
+}
+
+.final-score {
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1;
+  color: #0f172a;
+}
+
+.final-score-unit {
+  font-size: 14px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.score-formula {
+  font-size: 0.8rem;
+  color: #475569;
+  background: #eef5ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.clinical-explanation {
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: #334155;
+  background: #ffffff;
+  border: 1px solid #dbe3ef;
+  border-radius: 10px;
+  padding: 10px;
 }
 
 .capacity-card {
@@ -619,3 +719,4 @@ onMounted(async () => {
   color: #111827;
 }
 </style>
+
