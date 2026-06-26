@@ -652,4 +652,53 @@ public class BlockRepository : IBlockRepository
                 block.StartTime == startTime &&
                 block.BlockStatus != "Cancelled");
     }
+
+    public async Task<List<int>> GetActiveRoomIdsAsync(int hospitalId)
+{
+    return await _dbContext.OperatingRooms
+        .Where(room =>
+            room.HospitalId == hospitalId &&
+            room.IsActive)
+        .OrderBy(room => room.ORRoomId)
+        .Select(room => room.ORRoomId)
+        .ToListAsync();
+}
+    public async Task<bool> TemplateOverlapExistsAsync(
+    int hospitalId,
+    int roomId,
+    int dayOfWeek,
+    TimeOnly startTime,
+    TimeOnly endTime,
+    int? excludeTemplateId = null)
+    {
+        var query =
+            from template in _dbContext.RecurringBlockTemplates
+            join room in _dbContext.OperatingRooms
+                on template.ORRoomId equals room.ORRoomId
+            where room.HospitalId == hospitalId &&
+                  template.ORRoomId == roomId &&
+                  template.DayOfWeek == dayOfWeek &&
+                  template.IsActive &&
+                  startTime < template.EndTime &&
+                  endTime > template.StartTime
+            select template;
+
+        if (excludeTemplateId.HasValue)
+        {
+            query = query.Where(template =>
+                template.TemplateId != excludeTemplateId.Value);
+        }
+
+        return await query.AnyAsync();
+    }
+    public async Task<int?> GetFirstActiveRoomIdAsync(int hospitalId)
+    {
+        return await _dbContext.OperatingRooms
+            .Where(room =>
+                room.HospitalId == hospitalId &&
+                room.IsActive)
+            .OrderBy(room => room.ORRoomId)
+            .Select(room => (int?)room.ORRoomId)
+            .FirstOrDefaultAsync();
+    }
 }

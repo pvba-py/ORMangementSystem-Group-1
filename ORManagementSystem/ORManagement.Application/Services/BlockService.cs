@@ -68,6 +68,21 @@ public class BlockService : IBlockService
         }
         var templateId = await _blockRepository.CreateTemplateAsync(request);
 
+
+        var overlapExists = await _blockRepository.TemplateOverlapExistsAsync(
+            hospitalId,
+            request.ORRoomId,
+            request.DayOfWeek,
+            request.StartTime,
+            request.EndTime);
+
+        if (overlapExists)
+        {
+            return ServiceResultDto<int>.Fail(
+                "TEMPLATE_OVERLAP",
+                "Template time overlaps with an existing active template for the selected room and day.");
+        }
+
         await _auditRepository.AddAuditLogAsync(new CreateAuditLogDto
         {
             HospitalId = hospitalId,
@@ -116,6 +131,21 @@ public class BlockService : IBlockService
     request.EndTime,
     request.BlockType,
     excludeTemplateId: templateId);
+
+        var overlapExists = await _blockRepository.TemplateOverlapExistsAsync(
+            hospitalId,
+            request.ORRoomId,
+            request.DayOfWeek,
+            request.StartTime,
+            request.EndTime,
+            excludeTemplateId: templateId);
+
+        if (overlapExists)
+        {
+            return ServiceResultDto.Fail(
+                "TEMPLATE_OVERLAP",
+                "Template time overlaps with another active template for the selected room and day.");
+        }
 
         if (duplicateExists)
         {

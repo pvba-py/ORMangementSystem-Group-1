@@ -7,7 +7,9 @@ import {
   cutoffCycle,
   publishCycle,
   startCycle,
-  closeCycle
+  closeCycle,
+  autoBuildBlocks,
+  autoAssignCases
 } from '../../services/cycleService'
 import { computed, onMounted, ref } from 'vue'
 import PageHeader from '../../components/common/PageHeader.vue'
@@ -17,6 +19,11 @@ import { showToast } from '../../utils/toast'
 
 const loading = ref(false)
 const actionLoading = ref(false)
+const activeAction = ref('')
+const isActionLoading = actionName => {
+  return actionLoading.value && activeAction.value === actionName
+}
+
 
 const cycles = ref([])
 const selectedCycle = ref(null)
@@ -132,7 +139,95 @@ const selectedCycleActionHint = computed(() => {
       return 'Unknown cycle status.'
   }
 })
+const handleAutoBuildBlocks = async () => {
+  if (!selectedCycle.value?.cycleId) return
 
+  if (!confirm(`Auto build blocks for cycle #${selectedCycle.value.cycleId}? This will create missing templates and generate blocks.`)) {
+    return
+  }
+
+  actionLoading.value = true
+  activeAction.value = 'autoBuild'
+
+  try {
+    const cycleId = selectedCycle.value.cycleId
+
+    const response = await autoBuildBlocks(cycleId)
+    const data = response.data?.data
+
+    const templatesCreated = data?.templatesCreated ?? 0
+    const blocksGenerated = data?.blocksGenerated ?? 0
+    const skippedCount = data?.skippedCount ?? 0
+
+    showToast(
+      `Auto build completed. Templates created: ${templatesCreated}, Blocks generated: ${blocksGenerated}, Skipped: ${skippedCount}.`,
+      'success'
+    )
+
+    await loadCycles(cycleId)
+    await loadCalendar()
+  } catch (err) {
+    const message =
+      err?.response?.data?.message ||
+      err?.response?.data?.title ||
+      'Failed to auto build blocks.'
+
+    showToast(message, 'error')
+  } finally {
+    actionLoading.value = false
+    activeAction.value = ''
+  }
+}
+
+const handleAutoAssignCases = async () => {
+  if (!selectedCycle.value?.cycleId) return
+
+  if (!confirm(`Auto assign approved ready requests for cycle #${selectedCycle.value.cycleId}?`)) {
+    return
+  }
+
+  actionLoading.value = true
+  activeAction.value = 'autoAssign'
+
+  try {
+    const cycleId = selectedCycle.value.cycleId
+
+    const response = await autoAssignCases(cycleId)
+    const data = response.data?.data
+
+    const casesScheduled = data?.casesScheduled ?? 0
+    const requestsSkipped = data?.requestsSkipped ?? 0
+    const skippedRequests = data?.skippedRequests || []
+
+    showToast(
+      `Auto assignment completed. Cases scheduled: ${casesScheduled}, Requests skipped: ${requestsSkipped}.`,
+      casesScheduled > 0 ? 'success' : 'warning'
+    )
+
+    if (skippedRequests.length > 0) {
+      const firstSkipped = skippedRequests[0]
+
+      showToast(
+        `Skipped request #${firstSkipped.requestId}: ${firstSkipped.reason}`,
+        'warning'
+      )
+    }
+
+    await loadCycles(cycleId)
+    await loadCalendar()
+  } catch (err) {
+    const message =
+      err?.response?.data?.message ||
+      err?.response?.data?.title ||
+      err?.response?.data?.error ||
+      'Failed to auto assign cases.'
+
+    showToast(message, 'error')
+  } finally {
+    actionLoading.value = false
+    activeAction.value = ''
+  }
+}
 const cycleWeekDays = computed(() => {
   if (!selectedCycle.value?.weekStartDate) {
     return []
@@ -323,6 +418,7 @@ const handleStart = async () => {
   }
 
   actionLoading.value = true
+  activeAction.value = 'start'
 
   try {
     const cycleId = selectedCycle.value.cycleId
@@ -340,6 +436,7 @@ const handleStart = async () => {
     showToast(message, 'error')
   } finally {
     actionLoading.value = false
+    activeAction.value = ''
   }
 }
 
@@ -351,7 +448,7 @@ const handleCutoff = async () => {
   }
 
   actionLoading.value = true
-
+  activeAction.value = 'cutoff'
   try {
     const cycleId = selectedCycle.value.cycleId
 
@@ -368,6 +465,7 @@ const handleCutoff = async () => {
     showToast(message, 'error')
   } finally {
     actionLoading.value = false
+    activeAction.value = ''
   }
 }
 
@@ -396,6 +494,7 @@ const handlePublish = async () => {
     showToast(message, 'error')
   } finally {
     actionLoading.value = false
+    activeAction.value = ''
   }
 }
 
@@ -407,6 +506,7 @@ const handleClose = async () => {
   }
 
   actionLoading.value = true
+  activeAction.value = 'close'
 
   try {
     const cycleId = selectedCycle.value.cycleId
@@ -424,6 +524,7 @@ const handleClose = async () => {
     showToast(message, 'error')
   } finally {
     actionLoading.value = false
+    activeAction.value = ''
   }
 }
 
@@ -610,9 +711,9 @@ onMounted(() => loadCycles())
               @click="handleStart"
             >
               <span
-                v-if="actionLoading"
-                class="spinner-border spinner-border-sm me-2"
-              ></span>
+  v-if="isActionLoading('start')"
+  class="spinner-border spinner-border-sm me-2"
+></span>
               Start Cycle
             </button>
 
@@ -623,24 +724,50 @@ onMounted(() => loadCycles())
               @click="handleCutoff"
             >
               <span
-                v-if="actionLoading"
+                v-if="isActionLoading('cutoff')"
                 class="spinner-border spinner-border-sm me-2"
               ></span>
               Cutoff Cycle
             </button>
 
             <button
-              v-if="selectedCycleStatus === 'Cutoff'"
-              class="btn btn-success"
-              :disabled="actionLoading || !canPublishSelectedCycle"
-              @click="handlePublish"
-            >
-              <span
-                v-if="actionLoading"
-                class="spinner-border spinner-border-sm me-2"
-              ></span>
-              Publish Schedule
-            </button>
+  v-if="selectedCycleStatus === 'Cutoff'"
+  class="btn btn-outline-primary"
+  :disabled="actionLoading"
+  @click="handleAutoBuildBlocks"
+>
+  <span
+    v-if="isActionLoading('autoBuild')"
+    class="spinner-border spinner-border-sm me-2"
+  ></span>
+  Auto Build Blocks
+</button>
+
+<button
+  v-if="selectedCycleStatus === 'Cutoff'"
+  class="btn btn-outline-success"
+  :disabled="actionLoading"
+  @click="handleAutoAssignCases"
+>
+  <span
+    v-if="isActionLoading('autoAssign')"
+    class="spinner-border spinner-border-sm me-2"
+  ></span>
+  Auto Assign Cases
+</button>
+
+<button
+  v-if="selectedCycleStatus === 'Cutoff'"
+  class="btn btn-success"
+  :disabled="actionLoading || !canPublishSelectedCycle"
+  @click="handlePublish"
+>
+  <span
+    v-if="isActionLoading('publish')"
+    class="spinner-border spinner-border-sm me-2"
+  ></span>
+  Publish Schedule
+</button>
 
             <button
               v-if="selectedCycleStatus === 'Published'"
@@ -649,7 +776,7 @@ onMounted(() => loadCycles())
               @click="handleClose"
             >
               <span
-                v-if="actionLoading"
+                v-if="isActionLoading('close')"
                 class="spinner-border spinner-border-sm me-2"
               ></span>
               Close Cycle

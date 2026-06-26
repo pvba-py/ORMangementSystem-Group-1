@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using ORManagement.Application.DTOs.Automation;
 using ORManagement.Application.DTOs.Requests;
 using ORManagement.Application.Interfaces.Repositories;
 using ORManagement.Infrastructure.Data;
@@ -241,6 +242,51 @@ public class RequestRepository : IRequestRepository
         await _dbContext.SaveChangesAsync();
 
         return true;
+    }
+    public async Task<List<AutoBlockDemandRequestDto>> GetAutoAssignCandidateRequestsForCycleAsync(
+    int hospitalId,
+    int cycleId)
+    {
+        return await _dbContext.ORRequests
+            .Where(request =>
+                request.HospitalId == hospitalId &&
+                request.CycleId == cycleId &&
+                request.PatientReadiness == "Ready" &&
+                (
+                    request.RequestStatus == "Approved" ||
+                    request.RequestStatus == "Scheduled"
+                ))
+            .Select(request => new AutoBlockDemandRequestDto
+            {
+                RequestId = request.RequestId,
+                SurgeonId = request.SurgeonId,
+                EstimatedDurationMin = request.EstimatedDurationMin,
+                Priority = request.Priority,
+                PatientReadiness = request.PatientReadiness,
+                RequestStatus = request.RequestStatus
+            })
+            .ToListAsync();
+    }
+    public async Task<List<AutoBlockDemandRequestDto>> GetApprovedReadyRequestsForCycleAsync(
+    int hospitalId,
+    int cycleId)
+    {
+        return await _dbContext.ORRequests
+            .Where(request =>
+                request.HospitalId == hospitalId &&
+                request.CycleId == cycleId &&
+                request.RequestStatus == "Approved" &&
+                request.PatientReadiness == "Ready")
+            .Select(request => new AutoBlockDemandRequestDto
+            {
+                RequestId = request.RequestId,
+                SurgeonId = request.SurgeonId,
+                EstimatedDurationMin = request.EstimatedDurationMin,
+                Priority = request.Priority,
+                PatientReadiness = request.PatientReadiness,
+                RequestStatus = request.RequestStatus
+            })
+            .ToListAsync();
     }
 
     public async Task<RequestCapacitySummaryDto> GetCapacitySummaryAsync(int hospitalId)

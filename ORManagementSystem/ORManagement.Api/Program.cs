@@ -108,6 +108,10 @@ builder.Services.AddScoped<IForecastService, ForecastService>();
 builder.Services.AddScoped<INotificationStackRepository, NotificationStackRepository>();
 builder.Services.AddScoped<INotificationStackService, NotificationStackService>();
 
+//Automation
+builder.Services.AddScoped<IAutoSchedulingService, AutoSchedulingService>();
+//Used Cycles Controller 
+
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();

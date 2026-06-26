@@ -86,5 +86,14 @@ public interface IBlockRepository
     Task<bool> DeleteTemplateAsync(
         int hospitalId,
         int templateId);
+    Task<int?> GetFirstActiveRoomIdAsync(int hospitalId);
+    Task<List<int>> GetActiveRoomIdsAsync(int hospitalId);
 
+    Task<bool> TemplateOverlapExistsAsync(
+        int hospitalId,
+        int roomId,
+        int dayOfWeek,
+        TimeOnly startTime,
+        TimeOnly endTime,
+        int? excludeTemplateId = null);
 }
