@@ -51,7 +51,21 @@ public class BlockService : IBlockService
         {
             return ServiceResultDto<int>.Fail("INVALID_BLOCK_TIME", "End time must be after start time.");
         }
+        var duplicateExists = await _blockRepository.TemplateDuplicateExistsAsync(
+    hospitalId,
+    request.ORRoomId,
+    request.BlockType == "Recurring" ? request.SurgeonId : null,
+    request.DayOfWeek,
+    request.StartTime,
+    request.EndTime,
+    request.BlockType);
 
+        if (duplicateExists)
+        {
+            return ServiceResultDto<int>.Fail(
+                "DUPLICATE_TEMPLATE",
+                "A matching block template already exists for the selected room, surgeon, day, time, and block type.");
+        }
         var templateId = await _blockRepository.CreateTemplateAsync(request);
 
         await _auditRepository.AddAuditLogAsync(new CreateAuditLogDto
@@ -93,6 +107,22 @@ public class BlockService : IBlockService
         {
             return ServiceResultDto.Fail("TEMPLATE_NOT_FOUND", "Block template was not found.");
         }
+        var duplicateExists = await _blockRepository.TemplateDuplicateExistsAsync(
+    hospitalId,
+    request.ORRoomId,
+    request.BlockType == "Recurring" ? request.SurgeonId : null,
+    request.DayOfWeek,
+    request.StartTime,
+    request.EndTime,
+    request.BlockType,
+    excludeTemplateId: templateId);
+
+        if (duplicateExists)
+        {
+            return ServiceResultDto.Fail(
+                "DUPLICATE_TEMPLATE",
+                "Another matching block template already exists for the selected room, surgeon, day, time, and block type.");
+        }
 
         var updated = await _blockRepository.UpdateTemplateAsync(hospitalId, templateId, request);
 
@@ -118,7 +148,53 @@ public class BlockService : IBlockService
 
         return ServiceResultDto.Ok("Block template updated successfully.");
     }
+    public async Task<ServiceResultDto> DeleteTemplateAsync(
+    int hospitalId,
+    int templateId,
+    int userId,
+    string roleName,
+    string? ipAddress,
+    string? userAgent)
+    {
+        var existing = await _blockRepository.GetTemplateByIdAsync(
+            hospitalId,
+            templateId);
 
+        if (existing is null)
+        {
+            return ServiceResultDto.Fail(
+                "TEMPLATE_NOT_FOUND",
+                "Block template was not found.");
+        }
+
+        var deleted = await _blockRepository.DeleteTemplateAsync(
+            hospitalId,
+            templateId);
+
+        if (!deleted)
+        {
+            return ServiceResultDto.Fail(
+                "TEMPLATE_DELETE_FAILED",
+                "Block template could not be deleted.");
+        }
+
+        await _auditRepository.AddAuditLogAsync(new CreateAuditLogDto
+        {
+            HospitalId = hospitalId,
+            UserId = userId,
+            RoleName = roleName,
+            Action = "BlockTemplateDeleted",
+            Entity = "RecurringBlockTemplates",
+            EntityId = templateId,
+            OldValue = $"{existing.DayOfWeek}|{existing.StartTime}-{existing.EndTime}|{existing.BlockType}|{existing.IsActive}",
+            NewValue = "Deleted",
+            Remarks = "Recurring block template deleted. Existing generated blocks were not removed.",
+            IpAddress = ipAddress,
+            UserAgent = userAgent
+        });
+
+        return ServiceResultDto.Ok("Block template deleted successfully.");
+    }
     public async Task<ServiceResultDto> DeactivateTemplateAsync(
         int hospitalId,
         int templateId,

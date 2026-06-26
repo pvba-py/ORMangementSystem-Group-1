@@ -73,5 +73,18 @@ public interface IBlockRepository
     Task<int> CreateBlockAllocationAsync(
     int hospitalId,
     CreateBlockAllocationDto request);
+    Task<bool> TemplateDuplicateExistsAsync(
+    int hospitalId,
+    int roomId,
+    int? surgeonId,
+    int dayOfWeek,
+    TimeOnly startTime,
+    TimeOnly endTime,
+    string blockType,
+    int? excludeTemplateId = null);
+
+    Task<bool> DeleteTemplateAsync(
+        int hospitalId,
+        int templateId);
 
 }

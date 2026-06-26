@@ -12,9 +12,6 @@ export const updateBlockTemplate = (id, payload) => {
   return api.put(`/block-templates/${id}`, payload)
 }
 
-export const deleteBlockTemplate = (id) => {
-  return api.delete(`/block-templates/${id}`)
-}
 
 export const addBlockException = (templateId, payload) => {
   return api.post(`/block-templates/${templateId}/exceptions`, payload)

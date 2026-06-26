@@ -579,6 +579,67 @@ public class BlockRepository : IBlockRepository
                 exception.TemplateId == templateId &&
                 exception.SkipDate == skipDate);
     }
+    public async Task<bool> TemplateDuplicateExistsAsync(
+    int hospitalId,
+    int roomId,
+    int? surgeonId,
+    int dayOfWeek,
+    TimeOnly startTime,
+    TimeOnly endTime,
+    string blockType,
+    int? excludeTemplateId = null)
+    {
+        var normalizedSurgeonId = blockType == "Recurring"
+            ? surgeonId
+            : null;
+
+        var query =
+            from template in _dbContext.RecurringBlockTemplates
+            join room in _dbContext.OperatingRooms
+                on template.ORRoomId equals room.ORRoomId
+            where room.HospitalId == hospitalId &&
+                  template.ORRoomId == roomId &&
+                  template.DayOfWeek == dayOfWeek &&
+                  template.StartTime == startTime &&
+                  template.EndTime == endTime &&
+                  template.BlockType == blockType &&
+                  template.SurgeonId == normalizedSurgeonId
+            select template;
+
+        if (excludeTemplateId.HasValue)
+        {
+            query = query.Where(template =>
+                template.TemplateId != excludeTemplateId.Value);
+        }
+
+        return await query.AnyAsync();
+    }
+    public async Task<bool> DeleteTemplateAsync(
+    int hospitalId,
+    int templateId)
+    {
+        var entity = await
+            (
+                from template in _dbContext.RecurringBlockTemplates
+                join room in _dbContext.OperatingRooms
+                    on template.ORRoomId equals room.ORRoomId
+                where template.TemplateId == templateId &&
+                      room.HospitalId == hospitalId
+                select template
+            )
+            .FirstOrDefaultAsync();
+
+        if (entity is null)
+        {
+            return false;
+        }
+
+        _dbContext.RecurringBlockTemplates.Remove(entity);
+
+        await _dbContext.SaveChangesAsync();
+
+        return true;
+    }
 
     public async Task<bool> GeneratedBlockExistsAsync(int roomId, DateTime blockDate, TimeOnly startTime)
     {

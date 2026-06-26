@@ -129,8 +129,42 @@ public class BlocksController : ApiControllerBase
             message = result.Message
         });
     }
-
     [HttpDelete("block-templates/{id:int}")]
+    [Authorize(Roles = "ORScheduler")]
+    public async Task<IActionResult> DeleteTemplate(int id)
+    {
+        var userId = GetCurrentUserId();
+
+        if (userId is null)
+        {
+            return Unauthorized(new
+            {
+                success = false,
+                errorCode = "INVALID_TOKEN",
+                message = "Invalid token."
+            });
+        }
+
+        var result = await _blockService.DeleteTemplateAsync(
+            GetCurrentHospitalIdOrDefault(),
+            id,
+            userId.Value,
+            GetCurrentRoleName(),
+            GetIpAddress(),
+            GetUserAgent());
+
+        if (!result.Success)
+        {
+            return MapError(result);
+        }
+
+        return Ok(new
+        {
+            success = true,
+            message = result.Message
+        });
+    }
+    [HttpPut("block-templates/{id:int}/deactivate")]
     [Authorize(Roles = "ORScheduler")]
     public async Task<IActionResult> DeactivateTemplate(int id)
     {

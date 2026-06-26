@@ -93,6 +93,13 @@ public interface IBlockService
         ReleaseBlockRequestDto request,
         string? ipAddress,
         string? userAgent);
+    Task<ServiceResultDto> DeleteTemplateAsync(
+    int hospitalId,
+    int templateId,
+    int userId,
+    string roleName,
+    string? ipAddress,
+    string? userAgent);
     Task<ServiceResultDto<int>> CreateBlockAllocationAsync(
     int hospitalId,
     int userId,

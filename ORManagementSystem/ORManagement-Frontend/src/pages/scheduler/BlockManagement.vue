@@ -39,12 +39,11 @@ const rooms = ref([])
 const showTemplateModal = ref(false)
 const showEditBlockModal = ref(false)
 const showReleaseBlockModal = ref(false)
-const showExceptionModal = ref(false)
 
 const selectedTemplate = ref(null)
 const selectedBlock = ref(null)
 const selectedReleaseBlock = ref(null)
-const selectedExceptionTemplate = ref(null)
+
 
 const blockFilters = ref({
   fromDate: '2026-06-22',
@@ -95,10 +94,6 @@ const releaseForm = ref({
   remarks: ''
 })
 
-const exceptionForm = ref({
-  skipDate: '',
-  reason: ''
-})
 
 const topRecurringSurgeonIds = [10, 3]
 
@@ -149,7 +144,10 @@ const handleDeleteTemplate = async template => {
 
     showToast('Template deleted successfully.', 'success')
 
-    await loadTemplates()
+    await Promise.all([
+  loadTemplates(),
+  loadCapacitySummary()
+])
   } catch (err) {
     const message =
       err?.response?.data?.message ||
@@ -354,12 +352,25 @@ const submitTemplate = async () => {
 }
 
 const handleDeactivateTemplate = async template => {
-  if (!confirm(`Deactivate template #${template.templateId}?`)) return
+  if (!template?.templateId) return
+
+  const confirmed = confirm(
+    `Deactivate template #${template.templateId}? It will no longer generate future blocks.`
+  )
+
+  if (!confirmed) {
+    return
+  }
 
   try {
     await deactivateBlockTemplate(template.templateId)
+
     showToast('Template deactivated successfully.', 'success')
-    await loadTemplates()
+
+    await Promise.all([
+  loadTemplates(),
+  loadCapacitySummary()
+])
   } catch (err) {
     const message =
       err?.response?.data?.message ||
@@ -370,56 +381,6 @@ const handleDeactivateTemplate = async template => {
   }
 }
 
-const openException = template => {
-  selectedExceptionTemplate.value = template
-
-  exceptionForm.value = {
-    skipDate: '',
-    reason: ''
-  }
-
-  showExceptionModal.value = true
-}
-
-const closeExceptionModal = () => {
-  selectedExceptionTemplate.value = null
-  showExceptionModal.value = false
-
-  exceptionForm.value = {
-    skipDate: '',
-    reason: ''
-  }
-}
-
-const submitException = async () => {
-  if (!selectedExceptionTemplate.value) return
-
-  if (!exceptionForm.value.skipDate) {
-    showToast('Skip date is required.', 'warning')
-    return
-  }
-
-  saving.value = true
-
-  try {
-    await addBlockException(selectedExceptionTemplate.value.templateId, {
-      skipDate: exceptionForm.value.skipDate,
-      reason: exceptionForm.value.reason
-    })
-
-    showToast('Block exception added successfully.', 'success')
-    closeExceptionModal()
-  } catch (err) {
-    const message =
-      err?.response?.data?.message ||
-      err?.response?.data?.title ||
-      'Failed to add block exception.'
-
-    showToast(message, 'error')
-  } finally {
-    saving.value = false
-  }
-}
 
 const submitGenerateBlocks = async () => {
   if (!generateForm.value.fromDate || !generateForm.value.toDate) {
@@ -980,11 +941,12 @@ onMounted(loadPage)
                     </button>
 
                     <button
-                      class="btn btn-sm btn-outline-danger"
-                      @click="handleDeactivateTemplate(template)"
-                    >
-                      Deactivate
-                    </button>
+  v-if="template.isActive"
+  class="btn btn-sm btn-outline-warning me-2"
+  @click="handleDeactivateTemplate(template)"
+>
+  Deactivate
+</button>
                     <button
                       class="btn btn-sm btn-outline-danger"
                       @click="handleDeleteTemplate(template)"
@@ -1324,47 +1286,7 @@ onMounted(loadPage)
       </template>
     </AppModal>
 
-    <!-- Exception Modal -->
-    <AppModal
-      :show="showExceptionModal"
-      :title="selectedExceptionTemplate ? `Add Exception — Template #${selectedExceptionTemplate.templateId}` : 'Add Exception'"
-      size="lg"
-      @close="closeExceptionModal"
-    >
-      <div class="row g-3">
-        <div class="col-md-4">
-          <label class="form-label">Skip Date</label>
-          <input
-            v-model="exceptionForm.skipDate"
-            type="date"
-            class="form-control"
-          />
-        </div>
-
-        <div class="col-md-8">
-          <label class="form-label">Reason</label>
-          <input v-model="exceptionForm.reason" class="form-control" />
-        </div>
-      </div>
-
-      <template #footer>
-        <button class="btn btn-outline-secondary" @click="closeExceptionModal">
-          Cancel
-        </button>
-
-        <button
-          class="btn btn-warning"
-          :disabled="saving"
-          @click="submitException"
-        >
-          <span
-            v-if="saving"
-            class="spinner-border spinner-border-sm me-2"
-          ></span>
-          Add Exception
-        </button>
-      </template>
-    </AppModal>
+    
   </div>
 </template>
 

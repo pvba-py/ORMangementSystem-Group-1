@@ -51,6 +51,7 @@ onMounted(loadDashboard)
           Review Requests
         </router-link>
         <div class="d-flex justify-content-end mb-2">
+          <br>
   <span
     class="badge"
     :class="dashboardSource === 'cache' ? 'bg-info text-dark' : 'bg-success'"
