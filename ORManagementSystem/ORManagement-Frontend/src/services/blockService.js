@@ -48,6 +48,14 @@ export const cancelBlock = (id) => {
   return api.delete(`/blocks/${id}`)
 }
 
+export const deactivateBlockTemplate = id => {
+  return api.put(`/block-templates/${id}/deactivate`)
+}
+
+export const deleteBlockTemplate = id => {
+  return api.delete(`/block-templates/${id}`)
+}
+
 export const releaseBlock = (id, payload) => {
   return api.post(`/blocks/${id}/release`, payload)
 }

@@ -11,8 +11,8 @@ import {
   getBlockTemplates,
   createBlockTemplate,
   updateBlockTemplate,
+  deactivateBlockTemplate,
   deleteBlockTemplate,
-  addBlockException,
   generateBlocks,
   getBlocks,
   updateBlock,
@@ -133,7 +133,32 @@ const formatScore = value => {
 
   return Number(value).toFixed(2)
 }
+const handleDeleteTemplate = async template => {
+  if (!template?.templateId) return
 
+  const confirmed = confirm(
+    `Delete template #${template.templateId}? Existing generated blocks and scheduled cases will not be removed.`
+  )
+
+  if (!confirmed) {
+    return
+  }
+
+  try {
+    await deleteBlockTemplate(template.templateId)
+
+    showToast('Template deleted successfully.', 'success')
+
+    await loadTemplates()
+  } catch (err) {
+    const message =
+      err?.response?.data?.message ||
+      err?.response?.data?.title ||
+      'Failed to delete template.'
+
+    showToast(message, 'error')
+  }
+}
 const normalizeTimeForApi = value => {
   if (!value) return ''
   return value.length === 5 ? `${value}:00` : value
@@ -328,11 +353,11 @@ const submitTemplate = async () => {
   }
 }
 
-const handleDeleteTemplate = async template => {
+const handleDeactivateTemplate = async template => {
   if (!confirm(`Deactivate template #${template.templateId}?`)) return
 
   try {
-    await deleteBlockTemplate(template.templateId)
+    await deactivateBlockTemplate(template.templateId)
     showToast('Template deactivated successfully.', 'success')
     await loadTemplates()
   } catch (err) {
@@ -955,17 +980,16 @@ onMounted(loadPage)
                     </button>
 
                     <button
-                      class="btn btn-sm btn-outline-warning me-2"
-                      @click="openException(template)"
+                      class="btn btn-sm btn-outline-danger"
+                      @click="handleDeactivateTemplate(template)"
                     >
-                      Exception
+                      Deactivate
                     </button>
-
                     <button
                       class="btn btn-sm btn-outline-danger"
                       @click="handleDeleteTemplate(template)"
                     >
-                      Deactivate
+                      Delete
                     </button>
                   </td>
                 </tr>
