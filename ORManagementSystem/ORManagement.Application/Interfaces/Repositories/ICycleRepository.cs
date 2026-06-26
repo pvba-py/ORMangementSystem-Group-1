@@ -11,4 +11,17 @@ public interface ICycleRepository
     Task<List<SchedulingCycleDto>> GetCyclesAsync(int hospitalId);
     Task<bool> CutoffCycleAsync(int hospitalId, int cycleId);
     Task<bool> PublishCycleAsync(int hospitalId, int cycleId, int modifiedByUserId);
+    Task<bool> HasOpenCycleAsync(
+    int hospitalId,
+    int? excludeCycleId = null);
+
+    Task<bool> StartCycleAsync(
+        int hospitalId,
+        int cycleId,
+        int createdByUserId);
+
+    Task<bool> CloseCycleAsync(
+        int hospitalId,
+        int cycleId,
+        int modifiedByUserId);
 }

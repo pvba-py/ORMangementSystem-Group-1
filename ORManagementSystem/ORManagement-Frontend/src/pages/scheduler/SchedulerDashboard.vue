@@ -11,6 +11,7 @@ import { showToast } from '../../utils/toast'
 
 const loading = ref(false)
 const dashboard = ref(null)
+const dashboardSource = ref('unknown')
 
 const loadDashboard = async () => {
   loading.value = true
@@ -18,6 +19,7 @@ const loadDashboard = async () => {
   try {
     const response = await getSchedulerDashboard()
     dashboard.value = response.data
+    dashboardSource.value = response.headers['x-data-source'] || 'unknown'
   } catch (err) {
     const message =
       err?.response?.data?.message ||
@@ -48,6 +50,14 @@ onMounted(loadDashboard)
           <i class="bi bi-inbox me-1"></i>
           Review Requests
         </router-link>
+        <div class="d-flex justify-content-end mb-2">
+  <span
+    class="badge"
+    :class="dashboardSource === 'cache' ? 'bg-info text-dark' : 'bg-success'"
+  >
+    Source: {{ dashboardSource }}
+  </span>
+</div>
       </template>
     </PageHeader>
 

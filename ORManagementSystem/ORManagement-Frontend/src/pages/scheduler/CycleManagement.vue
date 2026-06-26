@@ -1,14 +1,16 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
-import PageHeader from '../../components/common/PageHeader.vue'
 import LoadingSpinner from '../../components/common/LoadingSpinner.vue'
 import EmptyState from '../../components/common/EmptyState.vue'
 import StatusBadge from '../../components/common/StatusBadge.vue'
 import {
   getCycles,
   cutoffCycle,
-  publishCycle
+  publishCycle,
+  startCycle,
+  closeCycle
 } from '../../services/cycleService'
+import { computed, onMounted, ref } from 'vue'
+import PageHeader from '../../components/common/PageHeader.vue'
 import { getCalendar } from '../../services/roomService'
 import { formatDate, formatDateTime, formatTime } from '../../utils/formatters'
 import { showToast } from '../../utils/toast'
@@ -63,7 +65,8 @@ const getMinutesFromTimeValue = value => {
 }
 
 const getMinutesFromDateTimeValue = value => {
-  if (!value) return null
+  if (!value) return null 
+
 
   const date = new Date(value)
 
@@ -82,9 +85,53 @@ const overlapsHourInclusive = (startMinutes, endMinutes, hour) => {
   const slotStart = hour * 60
   const slotEnd = (hour + 1) * 60
 
-  // 08:00–10:00 appears in 08, 09, and 10 rows.
   return startMinutes <= slotEnd && endMinutes >= slotStart
 }
+
+const selectedCycleStatus = computed(() => {
+  return String(selectedCycle.value?.cycleStatus || '').trim()
+})
+
+const hasOpenCycle = computed(() => {
+  return cycles.value.some(cycle => cycle.cycleStatus === 'Open')
+})
+
+const canStartSelectedCycle = computed(() => {
+  return selectedCycleStatus.value === 'Closed' && !hasOpenCycle.value
+})
+
+const canCutoffSelectedCycle = computed(() => {
+  return selectedCycleStatus.value === 'Open'
+})
+
+const canPublishSelectedCycle = computed(() => {
+  return selectedCycleStatus.value === 'Cutoff'
+})
+
+const canCloseSelectedCycle = computed(() => {
+  return selectedCycleStatus.value === 'Published'
+})
+
+const selectedCycleActionHint = computed(() => {
+  if (!selectedCycle.value) {
+    return 'Select a cycle to view available actions.'
+  }
+
+  switch (selectedCycleStatus.value) {
+    case 'Open':
+      return 'This cycle is accepting surgeon requests. Use cutoff when request intake should close.'
+    case 'Cutoff':
+      return 'Request intake is closed. Continue scheduling, then publish when finalized.'
+    case 'Published':
+      return 'The schedule is finalized. Close the cycle when it should become historical.'
+    case 'Closed':
+      return hasOpenCycle.value
+        ? 'This cycle is closed. Another cycle is already open, so this cycle cannot be started now.'
+        : 'This cycle is closed. Start it to accept new surgeon requests.'
+    default:
+      return 'Unknown cycle status.'
+  }
+})
 
 const cycleWeekDays = computed(() => {
   if (!selectedCycle.value?.weekStartDate) {
@@ -230,9 +277,10 @@ const chooseDefaultCycle = preferredCycleId => {
   }
 
   selectedCycle.value =
-    cycles.value.find(cycle => cycle.cycleStatus === 'Cutoff') ||
-    cycles.value.find(cycle => cycle.cycleStatus === 'Scheduling') ||
     cycles.value.find(cycle => cycle.cycleStatus === 'Open') ||
+    cycles.value.find(cycle => cycle.cycleStatus === 'Cutoff') ||
+    cycles.value.find(cycle => cycle.cycleStatus === 'Published') ||
+    cycles.value.find(cycle => cycle.cycleStatus === 'Closed') ||
     cycles.value[0]
 }
 
@@ -262,10 +310,43 @@ const loadCycles = async (preferredCycleId = null) => {
   }
 }
 
+const handleStart = async () => {
+  if (!selectedCycle.value?.cycleId) return
+
+  if (hasOpenCycle.value) {
+    showToast('Another cycle is already open. Only one cycle can be open at a time.', 'warning')
+    return
+  }
+
+  if (!confirm(`Start cycle #${selectedCycle.value.cycleId}? This cycle will begin accepting surgeon requests.`)) {
+    return
+  }
+
+  actionLoading.value = true
+
+  try {
+    const cycleId = selectedCycle.value.cycleId
+
+    await startCycle(cycleId)
+    showToast('Cycle started successfully.', 'success')
+
+    await loadCycles(cycleId)
+  } catch (err) {
+    const message =
+      err?.response?.data?.message ||
+      err?.response?.data?.title ||
+      'Failed to start cycle.'
+
+    showToast(message, 'error')
+  } finally {
+    actionLoading.value = false
+  }
+}
+
 const handleCutoff = async () => {
   if (!selectedCycle.value?.cycleId) return
 
-  if (!confirm(`Cutoff cycle #${selectedCycle.value.cycleId}?`)) {
+  if (!confirm(`Cutoff cycle #${selectedCycle.value.cycleId}? New normal requests will be blocked.`)) {
     return
   }
 
@@ -293,7 +374,7 @@ const handleCutoff = async () => {
 const handlePublish = async () => {
   if (!selectedCycle.value?.cycleId) return
 
-  if (!confirm(`Publish cycle #${selectedCycle.value.cycleId}?`)) {
+  if (!confirm(`Publish cycle #${selectedCycle.value.cycleId}? The schedule will be finalized.`)) {
     return
   }
 
@@ -318,6 +399,34 @@ const handlePublish = async () => {
   }
 }
 
+const handleClose = async () => {
+  if (!selectedCycle.value?.cycleId) return
+
+  if (!confirm(`Close cycle #${selectedCycle.value.cycleId}? This will make the cycle historical/read-only.`)) {
+    return
+  }
+
+  actionLoading.value = true
+
+  try {
+    const cycleId = selectedCycle.value.cycleId
+
+    await closeCycle(cycleId)
+    showToast('Cycle closed successfully.', 'success')
+
+    await loadCycles(cycleId)
+  } catch (err) {
+    const message =
+      err?.response?.data?.message ||
+      err?.response?.data?.title ||
+      'Failed to close cycle.'
+
+    showToast(message, 'error')
+  } finally {
+    actionLoading.value = false
+  }
+}
+
 onMounted(() => loadCycles())
 </script>
 
@@ -325,7 +434,7 @@ onMounted(() => loadCycles())
   <div>
     <PageHeader
       title="Cycle Management"
-      subtitle="View scheduling cycles and inspect each cycle's OR calendar"
+      subtitle="Manage scheduling cycle lifecycle and inspect each cycle's OR calendar"
       icon="bi-arrow-repeat"
     >
       <template #actions>
@@ -343,6 +452,41 @@ onMounted(() => loadCycles())
     <LoadingSpinner v-if="loading" />
 
     <div v-else>
+      <!-- Cycle Lifecycle Guide -->
+      <div class="cycle-guide page-card mb-4">
+        <div class="d-flex flex-wrap gap-3 align-items-center">
+          <div class="cycle-guide-item">
+            <span class="cycle-dot cycle-dot-open"></span>
+            <strong>Open</strong>
+            <small>Accepting surgeon requests</small>
+          </div>
+
+          <div class="cycle-guide-arrow">→</div>
+
+          <div class="cycle-guide-item">
+            <span class="cycle-dot cycle-dot-cutoff"></span>
+            <strong>Cutoff</strong>
+            <small>Request intake closed</small>
+          </div>
+
+          <div class="cycle-guide-arrow">→</div>
+
+          <div class="cycle-guide-item">
+            <span class="cycle-dot cycle-dot-published"></span>
+            <strong>Published</strong>
+            <small>Schedule finalized</small>
+          </div>
+
+          <div class="cycle-guide-arrow">→</div>
+
+          <div class="cycle-guide-item">
+            <span class="cycle-dot cycle-dot-closed"></span>
+            <strong>Closed</strong>
+            <small>Historical/read-only</small>
+          </div>
+        </div>
+      </div>
+
       <!-- Cycle List -->
       <div class="page-card mb-4">
         <div class="d-flex justify-content-between align-items-center mb-3">
@@ -352,7 +496,7 @@ onMounted(() => loadCycles())
               Scheduling Cycles
             </h5>
             <small class="text-muted">
-              Select a cycle to view its blocks and scheduled cases.
+              Select a cycle to view its status, actions, blocks, and scheduled cases.
             </small>
           </div>
 
@@ -385,6 +529,8 @@ onMounted(() => loadCycles())
                 v-for="cycle in cycles"
                 :key="cycle.cycleId"
                 :class="{ 'selected-cycle-row': isSelectedCycle(cycle) }"
+                class="cycle-row"
+                @click="selectCycle(cycle)"
               >
                 <td>
                   <strong>#{{ cycle.cycleId }}</strong>
@@ -408,7 +554,7 @@ onMounted(() => loadCycles())
                   <button
                     class="btn btn-sm"
                     :class="isSelectedCycle(cycle) ? 'btn-primary' : 'btn-outline-primary'"
-                    @click="selectCycle(cycle)"
+                    @click.stop="selectCycle(cycle)"
                   >
                     {{ isSelectedCycle(cycle) ? 'Selected' : 'View Calendar' }}
                   </button>
@@ -451,33 +597,71 @@ onMounted(() => loadCycles())
 
         <hr />
 
-        <div class="d-flex justify-content-end gap-2">
-          <button
-            class="btn btn-warning"
-            :disabled="actionLoading || selectedCycle.cycleStatus !== 'Open'"
-            @click="handleCutoff"
-          >
-            <span
-              v-if="actionLoading"
-              class="spinner-border spinner-border-sm me-2"
-            ></span>
-            Cutoff Cycle
-          </button>
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+          <small class="text-muted">
+            {{ selectedCycleActionHint }}
+          </small>
 
-          <button
-            class="btn btn-success"
-            :disabled="
-              actionLoading ||
-              !['Cutoff', 'Scheduling'].includes(selectedCycle.cycleStatus)
-            "
-            @click="handlePublish"
-          >
-            <span
-              v-if="actionLoading"
-              class="spinner-border spinner-border-sm me-2"
-            ></span>
-            Publish Schedule
-          </button>
+          <div class="d-flex flex-wrap justify-content-end gap-2">
+            <button
+              v-if="selectedCycleStatus === 'Closed'"
+              class="btn btn-primary"
+              :disabled="actionLoading || !canStartSelectedCycle"
+              @click="handleStart"
+            >
+              <span
+                v-if="actionLoading"
+                class="spinner-border spinner-border-sm me-2"
+              ></span>
+              Start Cycle
+            </button>
+
+            <button
+              v-if="selectedCycleStatus === 'Open'"
+              class="btn btn-warning"
+              :disabled="actionLoading || !canCutoffSelectedCycle"
+              @click="handleCutoff"
+            >
+              <span
+                v-if="actionLoading"
+                class="spinner-border spinner-border-sm me-2"
+              ></span>
+              Cutoff Cycle
+            </button>
+
+            <button
+              v-if="selectedCycleStatus === 'Cutoff'"
+              class="btn btn-success"
+              :disabled="actionLoading || !canPublishSelectedCycle"
+              @click="handlePublish"
+            >
+              <span
+                v-if="actionLoading"
+                class="spinner-border spinner-border-sm me-2"
+              ></span>
+              Publish Schedule
+            </button>
+
+            <button
+              v-if="selectedCycleStatus === 'Published'"
+              class="btn btn-outline-dark"
+              :disabled="actionLoading || !canCloseSelectedCycle"
+              @click="handleClose"
+            >
+              <span
+                v-if="actionLoading"
+                class="spinner-border spinner-border-sm me-2"
+              ></span>
+              Close Cycle
+            </button>
+          </div>
+        </div>
+
+        <div
+          v-if="selectedCycle.cycleStatus === 'Closed' && hasOpenCycle"
+          class="alert alert-warning mt-3 mb-0"
+        >
+          Another cycle is currently open. Only one cycle can be open at a time.
         </div>
       </div>
 
@@ -636,6 +820,54 @@ onMounted(() => loadCycles())
   background: #eef5ff;
 }
 
+.cycle-row {
+  cursor: pointer;
+}
+
+.cycle-guide {
+  background: #ffffff;
+}
+
+.cycle-guide-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #334155;
+}
+
+.cycle-guide-item small {
+  color: #64748b;
+}
+
+.cycle-guide-arrow {
+  color: #94a3b8;
+  font-weight: 700;
+}
+
+.cycle-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.cycle-dot-open {
+  background: #198754;
+}
+
+.cycle-dot-cutoff {
+  background: #ffc107;
+}
+
+.cycle-dot-published {
+  background: #0d6efd;
+}
+
+.cycle-dot-closed {
+  background: #475569;
+}
+
+/* Compact weekly calendar */
 .weekly-calendar-wrapper {
   overflow-x: auto;
   border: 2px solid #cbd5e1;
@@ -645,8 +877,8 @@ onMounted(() => loadCycles())
 
 .weekly-calendar {
   display: grid;
-  grid-template-columns: 90px repeat(5, minmax(250px, 1fr));
-  min-width: 1320px;
+  grid-template-columns: 75px repeat(5, minmax(220px, 1fr));
+  min-width: 1175px;
   background: #ffffff;
 }
 
@@ -657,7 +889,7 @@ onMounted(() => loadCycles())
   background: #f1f5f9;
   border-bottom: 2px solid #cbd5e1;
   border-right: 1px solid #cbd5e1;
-  padding: 12px;
+  padding: 9px;
 }
 
 .time-header {
@@ -673,17 +905,18 @@ onMounted(() => loadCycles())
   background: #f8fafc;
   border-right: 2px solid #cbd5e1;
   border-bottom: 1px solid #dbe3ef;
-  padding: 10px;
+  padding: 8px;
   font-weight: 700;
   color: #475569;
-  min-height: 120px;
+  min-height: 95px;
+  font-size: 0.85rem;
 }
 
 .calendar-day-cell {
   border-right: 1px solid #dbe3ef;
   border-bottom: 1px solid #dbe3ef;
-  padding: 8px;
-  min-height: 120px;
+  padding: 6px;
+  min-height: 95px;
   background: #ffffff;
 }
 
@@ -692,91 +925,93 @@ onMounted(() => loadCycles())
 }
 
 .calendar-block-card {
-  border-radius: 12px;
-  padding: 10px;
+  border-radius: 10px;
+  padding: 8px;
   border: 2px solid #334155;
   background: #ffffff;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   box-shadow: 0 2px 5px rgba(15, 23, 42, 0.12);
 }
 
 .calendar-block-type {
   display: inline-block;
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  margin-bottom: 4px;
+  margin-bottom: 3px;
   color: #1e293b;
 }
 
 .calendar-block-title {
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 800;
   color: #0f172a;
 }
 
 .calendar-block-owner {
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   font-weight: 600;
   color: #475569;
 }
 
 .calendar-block-time {
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   font-weight: 700;
   color: #334155;
 }
 
 .calendar-block-recurring {
-  border-left: 7px solid #0d6efd;
+  border-left: 6px solid #0d6efd;
   background: #eef5ff;
 }
 
 .calendar-block-open {
-  border-left: 7px solid #198754;
+  border-left: 6px solid #198754;
   background: #eefaf3;
 }
 
 .calendar-block-emergency {
-  border-left: 7px solid #dc3545;
+  border-left: 6px solid #dc3545;
   background: #fff1f2;
 }
 
 .calendar-block-adhoc {
-  border-left: 7px solid #ffc107;
+  border-left: 6px solid #ffc107;
   background: #fff8e1;
 }
 
 .calendar-case-list {
   border-top: 2px dashed #94a3b8;
-  padding-top: 8px;
+  padding-top: 6px;
 }
 
 .calendar-case-item {
   background: #ffffff;
   border: 2px solid #64748b;
-  border-radius: 10px;
-  padding: 8px;
-  margin-top: 6px;
+  border-radius: 9px;
+  padding: 6px;
+  margin-top: 5px;
 }
 
 .calendar-case-title {
-  font-size: 0.86rem;
+  font-size: 0.82rem;
   font-weight: 800;
   color: #0f172a;
 }
 
 .calendar-case-detail {
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   color: #334155;
   margin-top: 2px;
 }
 
 .calendar-case-time {
-  font-size: 0.74rem;
+  font-size: 0.7rem;
   color: #475569;
   margin-top: 4px;
   font-weight: 600;
 }
 </style>
+
+

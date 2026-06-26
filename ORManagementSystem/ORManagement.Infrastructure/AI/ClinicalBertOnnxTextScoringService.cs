@@ -10,22 +10,45 @@ namespace ORManagement.Infrastructure.AI
 {
     public class ClinicalBertOnnxTextScoringService : IClinicalTextScoringService, IDisposable
     {
+        private static readonly (string Label, string Text, decimal Score)[] SeverityAnchors =
+{
+    (
+        "VeryLow",
+        "Routine elective surgical request. Patient is clinically stable. No acute deterioration. No severe pain. No bleeding. No sepsis. Surgery can be scheduled routinely.",
+        10m
+    ),
+    (
+        "Low",
+        "Low urgency surgical request. Patient has mild stable symptoms. Delay is unlikely to cause significant harm or complication. Routine operating room scheduling is appropriate.",
+        30m
+    ),
+    (
+        "Medium",
+        "Moderate urgency surgical request. Patient has persistent symptoms, pain, obstruction, wound risk, or clinical issue where delay may increase complication risk but patient is currently stable.",
+        55m
+    ),
+    (
+        "High",
+        "High urgency surgical request. Patient has worsening symptoms, progressive neurological deficit, severe pain, ischemia, obstruction, infection risk, or risk of loss of function if surgery is delayed.",
+        80m
+    ),
+    (
+        "Critical",
+        "Critical emergency surgical request. Patient has acute deterioration, unstable clinical status, sepsis, shock, active bleeding, acute neurological deterioration, or high risk of permanent deficit or death if delayed.",
+        100m
+    )
+};
+
         private readonly ClinicalScoringOptions _options;
         private readonly FallbackClinicalKeywordScoringService _fallbackScoringService;
         private readonly ILogger<ClinicalBertOnnxTextScoringService> _logger;
 
         private readonly InferenceSession? _session;
         private readonly BertTokenizer? _tokenizer;
-        private const string LowUrgencyAnchorText =
-    "Patient is clinically stable. Routine elective procedure. No acute deterioration. No severe pain. No active bleeding. No sepsis. No neurological deficit.";
 
-        private const string HighUrgencyAnchorText =
-            "Patient has acute clinical deterioration, unstable condition, sepsis, active bleeding, worsening neurological deficit, severe pain, risk of permanent loss of function if delayed. Emergency surgery required.";
+        private List<SeverityAnchorEmbedding>? _severityAnchorEmbeddings;
+        private readonly object _severityAnchorLock = new();
 
-        private float[]? _lowUrgencyAnchorEmbedding;
-        private float[]? _highUrgencyAnchorEmbedding;
-
-        private readonly object _anchorLock = new();
         public ClinicalBertOnnxTextScoringService(
             IOptions<ClinicalScoringOptions> options,
             FallbackClinicalKeywordScoringService fallbackScoringService,
@@ -39,40 +62,39 @@ namespace ORManagement.Infrastructure.AI
 
             if (!_options.UseOnnx)
             {
-                _logger.LogInformation("ClinicalBERT ONNX scoring is disabled. Fallback scorer will be used.");
                 return;
             }
 
             var modelPath = Path.Combine(AppContext.BaseDirectory, _options.ModelPath);
-            var vocabPath = Path.Combine(AppContext.BaseDirectory, _options.VocabPath);
+var vocabPath = Path.Combine(AppContext.BaseDirectory, _options.VocabPath);
 
-            _logger.LogInformation("ClinicalBERT configured model path: {ModelPath}", modelPath);
-            _logger.LogInformation("ClinicalBERT configured vocab path: {VocabPath}", vocabPath);
+_logger.LogInformation("ClinicalBERT configured model path: {ModelPath}", modelPath);
+_logger.LogInformation("ClinicalBERT configured vocab path: {VocabPath}", vocabPath);
 
-            if (!File.Exists(modelPath) || !File.Exists(vocabPath))
-            {
-                _logger.LogWarning(
-                    "ClinicalBERT ONNX model or vocab file was not found. ModelExists: {ModelExists}, VocabExists: {VocabExists}",
-                    File.Exists(modelPath),
-                    File.Exists(vocabPath));
+if (!File.Exists(modelPath) || !File.Exists(vocabPath))
+{
+    _logger.LogWarning(
+        "ClinicalBERT ONNX model or vocab file was not found. ModelExists: {ModelExists}, VocabExists: {VocabExists}",
+        File.Exists(modelPath),
+        File.Exists(vocabPath));
 
-                return;
-            }
+    return;
+}
 
-            _session = new InferenceSession(modelPath);
-            _tokenizer = new BertTokenizer(vocabPath);
+_session = new InferenceSession(modelPath);
+_tokenizer = new BertTokenizer(vocabPath);
 
-            foreach (var inputName in _session.InputMetadata.Keys)
-            {
-                _logger.LogInformation("ClinicalBERT ONNX input name: {InputName}", inputName);
-            }
+foreach (var inputName in _session.InputMetadata.Keys)
+{
+    _logger.LogInformation("ClinicalBERT ONNX input name: {InputName}", inputName);
+}
 
-            foreach (var outputName in _session.OutputMetadata.Keys)
-            {
-                _logger.LogInformation("ClinicalBERT ONNX output name: {OutputName}", outputName);
-            }
+foreach (var outputName in _session.OutputMetadata.Keys)
+{
+    _logger.LogInformation("ClinicalBERT ONNX output name: {OutputName}", outputName);
+}
 
-            _logger.LogInformation("ClinicalBERT ONNX scorer initialized successfully.");
+_logger.LogInformation("ClinicalBERT ONNX scorer initialized successfully.");
         }
 
         public async Task<ClinicalTextScoreResultDto> ScoreAsync(
@@ -80,141 +102,256 @@ namespace ORManagement.Infrastructure.AI
             string? surgeryType,
             string? priority,
             string? patientReadiness)
+{
+    var fallbackResult = await _fallbackScoringService.ScoreAsync(
+        remarks,
+        surgeryType,
+        priority,
+        patientReadiness);
+
+    if (_session is null || _tokenizer is null)
+    {
+        fallbackResult.UsedFallback = true;
+        fallbackResult.ModelName = "FallbackClinicalKeywordScorer";
+        return fallbackResult;
+    }
+
+    try
+    {
+        var text = BuildClinicalText(
+            remarks,
+            surgeryType,
+            priority,
+            patientReadiness);
+
+        var transformerSignal = CalculateAnchorSimilarityTransformerScore(text);
+
+        var clinicalScore = Math.Round(
+            (fallbackResult.ClinicalScore * 0.75m) +
+            (transformerSignal * 0.25m),
+            2);
+
+        clinicalScore = Math.Clamp(
+            clinicalScore,
+            0m,
+            100m);
+
+        return new ClinicalTextScoreResultDto
         {
-            var fallbackResult = await _fallbackScoringService.ScoreAsync(
-                remarks,
-                surgeryType,
-                priority,
-                patientReadiness);
+            ClinicalScore = clinicalScore,
+            Explanation =
+                $"{fallbackResult.Explanation} ClinicalBERT anchor-similarity transformer score: {transformerSignal:0.00}.",
+            ModelName = "ClinicalBERT-ONNX-AnchorSimilarity-DemoHybrid",
+            UsedFallback = false
+        };
+    }
+    catch (Exception ex)
+    {
+        _logger.LogWarning(
+            ex,
+            "ClinicalBERT ONNX scoring failed. Falling back to local clinical keyword scorer.");
 
-            if (_session is null || _tokenizer is null)
-            {
-                fallbackResult.UsedFallback = true;
-                fallbackResult.ModelName = "FallbackClinicalKeywordScorer";
-                return fallbackResult;
-            }
+        fallbackResult.UsedFallback = true;
+        fallbackResult.ModelName = "FallbackClinicalKeywordScorer";
+        fallbackResult.Explanation =
+            $"{fallbackResult.Explanation} ONNX scoring failed and fallback was used.";
 
-            try
-            {
-                var maxSequenceLength = _options.MaxSequenceLength <= 0
-                    ? 128
-                    : _options.MaxSequenceLength;
+        return fallbackResult;
+    }
+}
 
-                var text = BuildClinicalText(
-                    remarks,
-                    surgeryType,
-                    priority,
-                    patientReadiness);
+public Task<(decimal TransformerSignalScore, string Explanation, string ModelName)> ScoreTransformerSignalOnlyAsync(
+    string remarks)
+{
+    if (_session is null || _tokenizer is null)
+    {
+        throw new InvalidOperationException(
+            "ClinicalBERT ONNX model is not loaded. Check model.onnx, model.onnx.data, vocab.txt, and ClinicalScoring configuration.");
+    }
 
-                var tokenized = _tokenizer.Tokenize(
-                    text,
-                    maxSequenceLength);
+    var text = string.Join(
+        " ",
+        new[]
+        {
+                    "Clinical remarks:",
+                    remarks
+        }.Where(value => !string.IsNullOrWhiteSpace(value)));
 
-                var inputIds = CreateTensor(
-                    tokenized.InputIds,
-                    maxSequenceLength);
+    var transformerSignal = CalculateAnchorSimilarityTransformerScore(text);
 
-                var attentionMask = CreateTensor(
-                    tokenized.AttentionMask,
-                    maxSequenceLength);
+    return Task.FromResult(
+        (
+            TransformerSignalScore: transformerSignal,
+            Explanation: $"Transformer-only ClinicalBERT anchor-similarity score: {transformerSignal:0.00}. This compares the request text embedding against five severity anchor embeddings.",
+            ModelName: "ClinicalBERT-ONNX-AnchorSimilarity-TransformerOnly"
+        ));
+}
 
-                var tokenTypeIds = CreateTensor(
-                    tokenized.TokenTypeIds,
-                    maxSequenceLength);
+private decimal CalculateAnchorSimilarityTransformerScore(string text)
+{
+    if (_session is null || _tokenizer is null)
+    {
+        return 50m;
+    }
 
-                var inputNames = _session.InputMetadata.Keys.ToList();
+    EnsureSeverityAnchorEmbeddings();
 
-                var inputs = new List<NamedOnnxValue>();
+    if (_severityAnchorEmbeddings is null ||
+        _severityAnchorEmbeddings.Count == 0)
+    {
+        return 50m;
+    }
 
-                if (inputNames.Contains("input_ids"))
-                {
-                    inputs.Add(
-                        NamedOnnxValue.CreateFromTensor(
-                            "input_ids",
-                            inputIds));
-                }
+    var inputEmbedding = GetTextEmbedding(text);
 
-                if (inputNames.Contains("attention_mask"))
-                {
-                    inputs.Add(
-                        NamedOnnxValue.CreateFromTensor(
-                            "attention_mask",
-                            attentionMask));
-                }
+    if (inputEmbedding.Length == 0)
+    {
+        return 50m;
+    }
 
-                if (inputNames.Contains("token_type_ids"))
-                {
-                    inputs.Add(
-                        NamedOnnxValue.CreateFromTensor(
-                            "token_type_ids",
-                            tokenTypeIds));
-                }
+    var similarities = _severityAnchorEmbeddings
+        .Select(anchor => new
+        {
+            anchor.Label,
+            anchor.Score,
+            Similarity = CosineSimilarity(inputEmbedding, anchor.Embedding)
+        })
+        .ToList();
 
-                if (inputs.Count == 0)
-                {
-                    throw new InvalidOperationException(
-                        "ClinicalBERT ONNX model did not expose expected input names: input_ids, attention_mask, token_type_ids.");
-                }
+    var probabilities = SoftmaxSimilarities(
+        similarities.Select(item => item.Similarity).ToArray());
 
-                using var results = _session.Run(inputs);
+    if (probabilities.Length == 0)
+    {
+        return 50m;
+    }
 
-                var transformerSignal = ExtractTransformerSignalScore(results);
+    decimal finalScore = 0;
 
-                var clinicalScore = Math.Round(
-                    (fallbackResult.ClinicalScore * 0.75m) +
-                    (transformerSignal * 0.25m),
-                    2);
+    for (var index = 0; index < similarities.Count; index++)
+    {
+        finalScore += (decimal)probabilities[index] * similarities[index].Score;
+    }
 
-                clinicalScore = Math.Clamp(
-                    clinicalScore,
-                    0m,
-                    100m);
+    return Math.Round(
+        Math.Clamp(finalScore, 0m, 100m),
+        2);
+}
 
-                return new ClinicalTextScoreResultDto
-                {
-                    ClinicalScore = clinicalScore,
-                    Explanation =
-                        $"{fallbackResult.Explanation} Transformer signal score: {transformerSignal:0.00}.",
-                    ModelName = "ClinicalBERT-ONNX-DemoHybrid",
-                    UsedFallback = false
-                };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(
-                    ex,
-                    "ClinicalBERT ONNX scoring failed. Falling back to local clinical keyword scorer.");
+private void EnsureSeverityAnchorEmbeddings()
+{
+    if (_severityAnchorEmbeddings is not null)
+    {
+        return;
+    }
 
-                fallbackResult.UsedFallback = true;
-                fallbackResult.ModelName = "FallbackClinicalKeywordScorer";
-                fallbackResult.Explanation =
-                    $"{fallbackResult.Explanation} ONNX scoring failed and fallback was used.";
-
-                return fallbackResult;
-            }
+    lock (_severityAnchorLock)
+    {
+        if (_severityAnchorEmbeddings is not null)
+        {
+            return;
         }
 
-        private static DenseTensor<long> CreateTensor(
-            long[] values,
-            int maxSequenceLength)
+        _severityAnchorEmbeddings = SeverityAnchors
+            .Select(anchor => new SeverityAnchorEmbedding
+            {
+                Label = anchor.Label,
+                Score = anchor.Score,
+                Embedding = GetTextEmbedding(anchor.Text)
+            })
+            .Where(anchor => anchor.Embedding.Length > 0)
+            .ToList();
+    }
+}
+
+private float[] GetTextEmbedding(string text)
+{
+    if (_session is null || _tokenizer is null)
+    {
+        throw new InvalidOperationException(
+            "ClinicalBERT ONNX model is not loaded.");
+    }
+
+    var maxSequenceLength = _options.MaxSequenceLength <= 0
+        ? 128
+        : _options.MaxSequenceLength;
+
+    var tokenized = _tokenizer.Tokenize(
+        text,
+        maxSequenceLength);
+
+    var inputIds = CreateTensor(
+        tokenized.InputIds,
+        maxSequenceLength);
+
+    var attentionMask = CreateTensor(
+        tokenized.AttentionMask,
+        maxSequenceLength);
+
+    var tokenTypeIds = CreateTensor(
+        tokenized.TokenTypeIds,
+        maxSequenceLength);
+
+    var inputNames = _session.InputMetadata.Keys.ToList();
+
+    var inputs = new List<NamedOnnxValue>();
+
+    if (inputNames.Contains("input_ids"))
+    {
+        inputs.Add(
+            NamedOnnxValue.CreateFromTensor(
+                "input_ids",
+                inputIds));
+    }
+
+    if (inputNames.Contains("attention_mask"))
+    {
+        inputs.Add(
+            NamedOnnxValue.CreateFromTensor(
+                "attention_mask",
+                attentionMask));
+    }
+
+    if (inputNames.Contains("token_type_ids"))
+    {
+        inputs.Add(
+            NamedOnnxValue.CreateFromTensor(
+                "token_type_ids",
+                tokenTypeIds));
+    }
+
+    if (inputs.Count == 0)
+    {
+        throw new InvalidOperationException(
+            "ClinicalBERT ONNX model did not expose expected input names: input_ids, attention_mask, token_type_ids.");
+    }
+
+    using var results = _session.Run(inputs);
+
+    return ExtractEmbeddingVector(results);
+}
+
+private static DenseTensor<long> CreateTensor(
+    long[] values,
+    int maxSequenceLength)
+{
+    return new DenseTensor<long>(
+        values,
+        new[]
         {
-            return new DenseTensor<long>(
-                values,
-                new[]
-                {
                     1,
                     maxSequenceLength
-                });
-        }
+        });
+}
 
-        private static string BuildClinicalText(
-            string? remarks,
-            string? surgeryType,
-            string? priority,
-            string? patientReadiness)
-        {
-            var parts = new[]
-            {
+private static string BuildClinicalText(
+    string? remarks,
+    string? surgeryType,
+    string? priority,
+    string? patientReadiness)
+{
+    var parts = new[]
+    {
                 "Clinical remarks:",
                 remarks,
                 "Surgery:",
@@ -225,89 +362,147 @@ namespace ORManagement.Infrastructure.AI
                 patientReadiness
             };
 
-            return string.Join(
-                " ",
-                parts.Where(value => !string.IsNullOrWhiteSpace(value)));
-        }
+    return string.Join(
+        " ",
+        parts.Where(value => !string.IsNullOrWhiteSpace(value)));
+}
 
-        private static decimal ExtractTransformerSignalScore(
-            IDisposableReadOnlyCollection<DisposableNamedOnnxValue> results)
-        {
-            var firstResult = results.FirstOrDefault();
+private static float[] ExtractEmbeddingVector(
+    IDisposableReadOnlyCollection<DisposableNamedOnnxValue> results)
+{
+    var poolerOutput = results.FirstOrDefault(result =>
+        string.Equals(
+            result.Name,
+            "pooler_output",
+            StringComparison.OrdinalIgnoreCase));
 
-            if (firstResult is null)
-            {
-                return 50m;
-            }
+    if (poolerOutput is not null)
+    {
+        return poolerOutput
+            .AsTensor<float>()
+            .ToArray();
+    }
 
-            var tensor = firstResult.AsTensor<float>();
-            var dimensions = tensor.Dimensions.ToArray();
-            var values = tensor.ToArray();
+    var lastHiddenState = results.FirstOrDefault(result =>
+        result.Name.Contains(
+            "last_hidden_state",
+            StringComparison.OrdinalIgnoreCase));
 
-            if (values.Length == 0)
-            {
-                return 50m;
-            }
+    var selectedOutput = lastHiddenState ?? results.FirstOrDefault();
 
-            /*
-                Case 1:
-                If model returns classifier logits shaped [1, 2],
-                use positive class probability.
-            */
-            if (dimensions.Length == 2 &&
-                dimensions[0] == 1 &&
-                dimensions[1] == 2)
-            {
-                var logit0 = values[0];
-                var logit1 = values[1];
+    if (selectedOutput is null)
+    {
+        return Array.Empty<float>();
+    }
 
-                var max = Math.Max(logit0, logit1);
+    var tensor = selectedOutput.AsTensor<float>();
+    var dimensions = tensor.Dimensions.ToArray();
+    var values = tensor.ToArray();
 
-                var exp0 = Math.Exp(logit0 - max);
-                var exp1 = Math.Exp(logit1 - max);
+    if (values.Length == 0)
+    {
+        return Array.Empty<float>();
+    }
 
-                var probability = exp1 / (exp0 + exp1);
+    if (dimensions.Length == 3)
+    {
+        var hiddenSize = dimensions[2];
 
-                return Math.Round(
-                    (decimal)(probability * 100.0),
-                    2);
-            }
+        return values
+            .Take(hiddenSize)
+            .ToArray();
+    }
 
-            /*
-                Case 2:
-                Base BERT output is usually embeddings [1, sequence, hidden].
-                Since this is not fine-tuned for urgency classification,
-                this becomes a demo transformer activation signal.
-            */
-            var sampleSize = Math.Min(
-                values.Length,
-                768);
+    if (dimensions.Length == 2)
+    {
+        var hiddenSize = dimensions[1];
 
-            var meanAbsoluteActivation = values
-    .Take(sampleSize)
-    .Select(Math.Abs)
-    .Average();
+        return values
+            .Take(hiddenSize)
+            .ToArray();
+    }
 
-            /*
-                Demo calibration:
-                Base ClinicalBERT embeddings usually produce stable activation magnitudes.
-                This rescales the raw activation into a wider 0-100 range for demo readability.
-            */
-            var calibratedSignal = ((meanAbsoluteActivation - 0.20f) / 0.25f) * 100.0f;
+    return values
+        .Take(Math.Min(values.Length, 768))
+        .ToArray();
+}
 
-            var signal = Math.Clamp(
-                calibratedSignal,
-                0f,
-                100f);
+private static double CosineSimilarity(
+    float[] left,
+    float[] right)
+{
+    var length = Math.Min(left.Length, right.Length);
 
-            return Math.Round(
-                (decimal)signal,
-                2);
-        }
+    if (length == 0)
+    {
+        return 0;
+    }
 
-        public void Dispose()
-        {
-            _session?.Dispose();
-        }
+    double dotProduct = 0;
+    double leftNorm = 0;
+    double rightNorm = 0;
+
+    for (var index = 0; index < length; index++)
+    {
+        dotProduct += left[index] * right[index];
+        leftNorm += left[index] * left[index];
+        rightNorm += right[index] * right[index];
+    }
+
+    if (leftNorm == 0 || rightNorm == 0)
+    {
+        return 0;
+    }
+
+    return dotProduct / (Math.Sqrt(leftNorm) * Math.Sqrt(rightNorm));
+}
+
+private static double[] SoftmaxSimilarities(double[] similarities)
+{
+    if (similarities.Length == 0)
+    {
+        return Array.Empty<double>();
+    }
+
+    const double temperature = 0.05;
+
+    var logits = similarities
+        .Select(similarity => similarity / temperature)
+        .ToArray();
+
+    var maxLogit = logits.Max();
+
+    var exponents = logits
+        .Select(logit => Math.Exp(logit - maxLogit))
+        .ToArray();
+
+    var sum = exponents.Sum();
+
+    if (sum == 0)
+    {
+        return similarities
+            .Select(_ => 1.0 / similarities.Length)
+            .ToArray();
+    }
+
+    return exponents
+        .Select(value => value / sum)
+        .ToArray();
+}
+
+public void Dispose()
+{
+    _session?.Dispose();
+}
+
+private sealed class SeverityAnchorEmbedding
+{
+    public string Label { get; init; } = string.Empty;
+
+    public decimal Score { get; init; }
+
+    public float[] Embedding { get; init; } = Array.Empty<float>();
+}
     }
 }
+

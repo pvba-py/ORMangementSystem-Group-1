@@ -358,7 +358,7 @@ public class AuthService : IAuthService
         var jwtKey = _configuration["Jwt:Key"];
         var issuer = _configuration["Jwt:Issuer"];
         var audience = _configuration["Jwt:Audience"];
-        var expiryMinutes = Convert.ToInt32(_configuration["Jwt:AccessTokenExpiresInMinutes"] ?? "15");
+        var expiryMinutes = Convert.ToInt32(_configuration["Jwt:AccessTokenExpiresInMinutes"] ?? "240");
 
         if (string.IsNullOrWhiteSpace(jwtKey))
         {

@@ -135,4 +135,74 @@ public class CyclesController : ApiControllerBase
             message = result.Message
         });
     }
+    [HttpPut("{id:int}/start")]
+    [Authorize(Roles = "ORScheduler")]
+    public async Task<IActionResult> StartCycle(int id)
+    {
+        var userId = GetCurrentUserId();
+
+        if (userId is null)
+        {
+            return Unauthorized(new
+            {
+                success = false,
+                errorCode = "INVALID_TOKEN",
+                message = "Invalid token."
+            });
+        }
+
+        var result = await _cycleService.StartCycleAsync(
+            GetCurrentHospitalIdOrDefault(),
+            id,
+            userId.Value,
+            GetCurrentRoleName(),
+            GetIpAddress(),
+            GetUserAgent());
+
+        if (!result.Success)
+        {
+            return MapError(result);
+        }
+
+        return Ok(new
+        {
+            success = true,
+            message = result.Message
+        });
+    }
+    [HttpPut("{id:int}/close")]
+    [Authorize(Roles = "ORScheduler")]
+    public async Task<IActionResult> CloseCycle(int id)
+    {
+        var userId = GetCurrentUserId();
+
+        if (userId is null)
+        {
+            return Unauthorized(new
+            {
+                success = false,
+                errorCode = "INVALID_TOKEN",
+                message = "Invalid token."
+            });
+        }
+
+        var result = await _cycleService.CloseCycleAsync(
+            GetCurrentHospitalIdOrDefault(),
+            id,
+            userId.Value,
+            GetCurrentRoleName(),
+            GetIpAddress(),
+            GetUserAgent());
+
+        if (!result.Success)
+        {
+            return MapError(result);
+        }
+
+        return Ok(new
+        {
+            success = true,
+            message = result.Message
+        });
+    }
 }

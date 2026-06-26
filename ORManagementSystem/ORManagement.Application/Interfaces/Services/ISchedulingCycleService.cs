@@ -19,6 +19,21 @@ public interface ISchedulingCycleService
         string? ipAddress,
         string? userAgent);
 
+    Task<ServiceResultDto> StartCycleAsync(
+    int hospitalId,
+    int cycleId,
+    int userId,
+    string roleName,
+    string? ipAddress,
+    string? userAgent);
+
+    Task<ServiceResultDto> CloseCycleAsync(
+        int hospitalId,
+        int cycleId,
+        int userId,
+        string roleName,
+        string? ipAddress,
+        string? userAgent);
     Task<ServiceResultDto> PublishCycleAsync(
         int hospitalId,
         int cycleId,

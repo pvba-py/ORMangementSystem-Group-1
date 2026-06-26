@@ -168,4 +168,131 @@ public class SchedulingCycleService : ISchedulingCycleService
 
         return ServiceResultDto<List<SchedulingCycleDto>>.Ok(cycles);
     }
+    public async Task<ServiceResultDto> StartCycleAsync(
+     int hospitalId,
+     int cycleId,
+     int userId,
+     string roleName,
+     string? ipAddress,
+     string? userAgent)
+    {
+        var cycle = await _cycleRepository.GetCycleByIdAsync(hospitalId, cycleId);
+
+        if (cycle is null)
+        {
+            return ServiceResultDto.Fail(
+                "CYCLE_NOT_FOUND",
+                "Scheduling cycle was not found.");
+        }
+
+        if (cycle.CycleStatus != "Closed")
+        {
+            return ServiceResultDto.Fail(
+                "INVALID_CYCLE_STATUS",
+                "Only a closed cycle can be started.");
+        }
+
+        var openCycleExists = await _cycleRepository.HasOpenCycleAsync(
+            hospitalId,
+            excludeCycleId: cycleId);
+
+        if (openCycleExists)
+        {
+            return ServiceResultDto.Fail(
+                "OPEN_CYCLE_ALREADY_EXISTS",
+                "Another cycle is already open. Close or cutoff the open cycle before starting a new one.");
+        }
+
+        var started = await _cycleRepository.StartCycleAsync(
+    hospitalId,
+    cycleId,
+    userId);
+
+        if (!started)
+        {
+            return ServiceResultDto.Fail(
+                "CYCLE_START_FAILED",
+                "Cycle could not be started.");
+        }
+
+        await _auditRepository.AddAuditLogAsync(new CreateAuditLogDto
+        {
+            HospitalId = hospitalId,
+            UserId = userId,
+            RoleName = roleName,
+            Action = "CycleStarted",
+            Entity = "SchedulingCycles",
+            EntityId = cycleId,
+            OldValue = cycle.CycleStatus,
+            NewValue = "Open",
+            Remarks = "Scheduler manually started the scheduling cycle.",
+            IpAddress = ipAddress,
+            UserAgent = userAgent
+        });
+
+        _logger.LogInformation(
+            "Cycle started. CycleId: {CycleId}, UserId: {UserId}",
+            cycleId,
+            userId);
+
+        return ServiceResultDto.Ok("Cycle started successfully.");
+    }
+    public async Task<ServiceResultDto> CloseCycleAsync(
+    int hospitalId,
+    int cycleId,
+    int userId,
+    string roleName,
+    string? ipAddress,
+    string? userAgent)
+    {
+        var cycle = await _cycleRepository.GetCycleByIdAsync(hospitalId, cycleId);
+
+        if (cycle is null)
+        {
+            return ServiceResultDto.Fail(
+                "CYCLE_NOT_FOUND",
+                "Scheduling cycle was not found.");
+        }
+
+        if (cycle.CycleStatus != "Published")
+        {
+            return ServiceResultDto.Fail(
+                "INVALID_CYCLE_STATUS",
+                "Only a published cycle can be closed.");
+        }
+
+        var closed = await _cycleRepository.CloseCycleAsync(
+            hospitalId,
+            cycleId,
+            userId);
+
+        if (!closed)
+        {
+            return ServiceResultDto.Fail(
+                "CYCLE_CLOSE_FAILED",
+                "Cycle could not be closed.");
+        }
+
+        await _auditRepository.AddAuditLogAsync(new CreateAuditLogDto
+        {
+            HospitalId = hospitalId,
+            UserId = userId,
+            RoleName = roleName,
+            Action = "CycleClosed",
+            Entity = "SchedulingCycles",
+            EntityId = cycleId,
+            OldValue = cycle.CycleStatus,
+            NewValue = "Closed",
+            Remarks = "Scheduler closed the published scheduling cycle.",
+            IpAddress = ipAddress,
+            UserAgent = userAgent
+        });
+
+        _logger.LogInformation(
+            "Cycle closed. CycleId: {CycleId}, UserId: {UserId}",
+            cycleId,
+            userId);
+
+        return ServiceResultDto.Ok("Cycle closed successfully.");
+    }
 }

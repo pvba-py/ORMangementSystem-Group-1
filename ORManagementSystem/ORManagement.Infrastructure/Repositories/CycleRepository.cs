@@ -117,24 +117,32 @@ public class CycleRepository : ICycleRepository
 
     public async Task<bool> CutoffCycleAsync(int hospitalId, int cycleId)
     {
-        var cycleExists = await _dbContext.SchedulingCycles
-            .AnyAsync(cycle =>
+        var cycle = await _dbContext.SchedulingCycles
+            .FirstOrDefaultAsync(cycle =>
                 cycle.HospitalId == hospitalId &&
                 cycle.CycleId == cycleId);
 
-        if (!cycleExists)
+        if (cycle is null)
         {
             return false;
         }
 
-        await _dbContext.Database.ExecuteSqlRawAsync(
-            "EXEC scheduling.usp_CloseCycleAndRollover @CycleId",
-            new SqlParameter("@CycleId", cycleId));
+        if (cycle.CycleStatus != "Open")
+        {
+            return false;
+        }
+
+        cycle.CycleStatus = "Cutoff";
+
+        await _dbContext.SaveChangesAsync();
 
         return true;
     }
 
-    public async Task<bool> PublishCycleAsync(int hospitalId, int cycleId, int modifiedByUserId)
+    public async Task<bool> StartCycleAsync(
+    int hospitalId,
+    int cycleId,
+    int createdByUserId)
     {
         var cycle = await _dbContext.SchedulingCycles
             .FirstOrDefaultAsync(cycle =>
@@ -146,10 +154,80 @@ public class CycleRepository : ICycleRepository
             return false;
         }
 
+        if (cycle.CycleStatus != "Closed")
+        {
+            return false;
+        }
+
+        cycle.CycleStatus = "Open";
+
+        await _dbContext.SaveChangesAsync();
+
+        return true;
+    }
+    public async Task<bool> HasOpenCycleAsync(
+     int hospitalId,
+     int? excludeCycleId = null)
+    {
+        return await _dbContext.SchedulingCycles
+            .AnyAsync(cycle =>
+                cycle.HospitalId == hospitalId &&
+                cycle.CycleStatus == "Open" &&
+                (!excludeCycleId.HasValue || cycle.CycleId != excludeCycleId.Value));
+    }
+    public async Task<bool> CloseCycleAsync(
+    int hospitalId,
+    int cycleId,
+    int modifiedByUserId)
+    {
+        var cycle = await _dbContext.SchedulingCycles
+            .FirstOrDefaultAsync(cycle =>
+                cycle.HospitalId == hospitalId &&
+                cycle.CycleId == cycleId);
+
+        if (cycle is null)
+        {
+            return false;
+        }
+
+        if (cycle.CycleStatus != "Published")
+        {
+            return false;
+        }
+
+        cycle.CycleStatus = "Closed";
+
+        await _dbContext.SaveChangesAsync();
+
+        return true;
+    }
+    public async Task<bool> PublishCycleAsync(
+    int hospitalId,
+    int cycleId, int modifiedByUserId)
+    {
+        
+    var cycle = await _dbContext.SchedulingCycles
+        .FirstOrDefaultAsync(cycle =>
+            cycle.HospitalId == hospitalId &&
+            cycle.CycleId == cycleId);
+
+        if (cycle is null)
+        {
+            return false;
+        }
+
+        if (cycle.CycleStatus != "Cutoff")
+        {
+            return false;
+        }
+
         cycle.CycleStatus = "Published";
 
         await _dbContext.SaveChangesAsync();
 
         return true;
     }
+
+
+
 }

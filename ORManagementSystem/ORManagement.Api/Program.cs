@@ -23,12 +23,16 @@ builder.Services.AddCors(options =>
             .WithOrigins("http://localhost:5173") // Vue dev server
             .AllowAnyHeader()
             .AllowAnyMethod()
-            .AllowCredentials(); // REQUIRED for cookies
+            .AllowCredentials() // REQUIRED for cookies
+            .WithExposedHeaders("X-Data-Source");
     });
 });
 
 //Register Controllers
 builder.Services.AddControllers();
+
+//Register Memory Cache
+builder.Services.AddMemoryCache();
 
 //Register the DbContext with the connection string from appsettings.json
 builder.Services.AddDbContext<ORManagementDbContext>(options =>

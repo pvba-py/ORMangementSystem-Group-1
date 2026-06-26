@@ -17,3 +17,11 @@ export const cutoffCycle = (cycleId) => {
 export const publishCycle = (cycleId) => {
   return api.put(`/cycles/${cycleId}/publish`)
 }
+
+export const startCycle = cycleId => {
+  return api.put(`/cycles/${cycleId}/start`)
+}
+
+export const closeCycle = cycleId => {
+  return api.put(`/cycles/${cycleId}/close`)
+}

@@ -187,7 +187,7 @@ public class AuthController : ApiControllerBase
             Secure = useSecureCookies,
             SameSite = SameSiteMode.None,
             Expires = DateTimeOffset.UtcNow.AddMinutes(
-                Convert.ToInt32(_configuration["Jwt:AccessTokenExpiresInMinutes"] ?? "15"))
+                Convert.ToInt32(_configuration["Jwt:AccessTokenExpiresInMinutes"] ?? "240"))
         });
 
         Response.Cookies.Append(RefreshTokenCookieName, refreshToken, new CookieOptions
