@@ -175,4 +175,230 @@ public class ForecastRepository : IForecastRepository
 
         return true;
     }
+    public async Task<List<SurgeryDurationDto>> GetSurgeryDurationAveragesAsync(int hospitalId)
+    {
+        var result = await
+            (
+                from surgicalCase in _dbContext.SurgicalCases.AsNoTracking()
+                join request in _dbContext.ORRequests.AsNoTracking()
+                    on surgicalCase.RequestId equals request.RequestId
+                where surgicalCase.HospitalId == hospitalId &&
+                      surgicalCase.CaseStatus != "Cancelled"
+                let durationMinutes = EF.Functions.DateDiffMinute(
+                    surgicalCase.ScheduledStart,
+                    surgicalCase.ScheduledEnd)
+                where durationMinutes > 0
+                group new
+                {
+                    request.SurgeryType,
+                    DurationMinutes = durationMinutes
+                }
+                by request.SurgeryType.Trim()
+                into surgeryGroup
+                select new SurgeryDurationDto
+                {
+                    SurgeryType = surgeryGroup.Key,
+                    CaseCount = surgeryGroup.Count(),
+                    AverageDurationMinutes = Math.Round(
+                        surgeryGroup.Average(item => (decimal)item.DurationMinutes),
+                        2)
+                }
+            )
+            .OrderByDescending(item => item.AverageDurationMinutes)
+            .ThenBy(item => item.SurgeryType)
+            .ToListAsync();
+
+        return result;
+    }
+    public async Task<ForecastSummaryDto> GetForecastSummaryAsync(int hospitalId)
+    {
+        await Task.CompletedTask;
+
+        var currentWeekStart = StartOfWeek(DateTime.UtcNow.Date);
+
+        var weeklyDemandTrend = new List<WeeklyDemandTrendDto>
+    {
+        new()
+        {
+            WeekStartDate = currentWeekStart.AddDays(-21),
+            ActualCases = 11,
+            ForecastedCases = null
+        },
+        new()
+        {
+            WeekStartDate = currentWeekStart.AddDays(-14),
+            ActualCases = 14,
+            ForecastedCases = null
+        },
+        new()
+        {
+            WeekStartDate = currentWeekStart.AddDays(-7),
+            ActualCases = 16,
+            ForecastedCases = null
+        },
+        new()
+        {
+            WeekStartDate = currentWeekStart,
+            ActualCases = 18,
+            ForecastedCases = null
+        },
+        new()
+        {
+            WeekStartDate = currentWeekStart.AddDays(7),
+            ActualCases = 0,
+            ForecastedCases = 21
+        }
+    };
+
+        var surgeryTypeForecasts = new List<SurgeryTypeForecastDto>
+    {
+        new()
+        {
+            SurgeryType = "Spinal Decompression",
+            HistoricalCaseCount = 8,
+            AverageDurationMinutes = 180,
+            ForecastedCasesNextWeek = 3,
+            ForecastedHoursNextWeek = 9
+        },
+        new()
+        {
+            SurgeryType = "Knee Replacement",
+            HistoricalCaseCount = 7,
+            AverageDurationMinutes = 120,
+            ForecastedCasesNextWeek = 4,
+            ForecastedHoursNextWeek = 8
+        },
+        new()
+        {
+            SurgeryType = "Laparoscopic Cholecystectomy",
+            HistoricalCaseCount = 6,
+            AverageDurationMinutes = 90,
+            ForecastedCasesNextWeek = 4,
+            ForecastedHoursNextWeek = 6
+        },
+        new()
+        {
+            SurgeryType = "Craniotomy",
+            HistoricalCaseCount = 5,
+            AverageDurationMinutes = 150,
+            ForecastedCasesNextWeek = 2,
+            ForecastedHoursNextWeek = 5
+        },
+        new()
+        {
+            SurgeryType = "Ureteroscopy",
+            HistoricalCaseCount = 4,
+            AverageDurationMinutes = 120,
+            ForecastedCasesNextWeek = 2,
+            ForecastedHoursNextWeek = 4
+        },
+        new()
+        {
+            SurgeryType = "Tonsillectomy",
+            HistoricalCaseCount = 5,
+            AverageDurationMinutes = 60,
+            ForecastedCasesNextWeek = 3,
+            ForecastedHoursNextWeek = 3
+        },
+        new()
+        {
+            SurgeryType = "Skin Graft Procedure",
+            HistoricalCaseCount = 3,
+            AverageDurationMinutes = 90,
+            ForecastedCasesNextWeek = 2,
+            ForecastedHoursNextWeek = 3
+        },
+        new()
+        {
+            SurgeryType = "Diagnostic Procedure",
+            HistoricalCaseCount = 4,
+            AverageDurationMinutes = 60,
+            ForecastedCasesNextWeek = 1,
+            ForecastedHoursNextWeek = 1
+        }
+    };
+
+        var predictedCases = (int)Math.Round(
+            surgeryTypeForecasts.Sum(item => item.ForecastedCasesNextWeek),
+            MidpointRounding.AwayFromZero);
+
+        var predictedHours = Math.Round(
+            surgeryTypeForecasts.Sum(item => item.ForecastedHoursNextWeek),
+            2);
+
+        var availableHours = 34m;
+
+        var specialtyCapacityGaps = new List<SpecialtyCapacityGapDto>
+    {
+        new()
+        {
+            Specialty = "Neurosurgery",
+            ForecastedHours = 14,
+            AvailableBlockHours = 10,
+            GapHours = 4
+        },
+        new()
+        {
+            Specialty = "Orthopedics",
+            ForecastedHours = 8,
+            AvailableBlockHours = 8,
+            GapHours = 0
+        },
+        new()
+        {
+            Specialty = "General Surgery",
+            ForecastedHours = 6,
+            AvailableBlockHours = 7,
+            GapHours = -1
+        },
+        new()
+        {
+            Specialty = "Urology",
+            ForecastedHours = 4,
+            AvailableBlockHours = 4,
+            GapHours = 0
+        },
+        new()
+        {
+            Specialty = "ENT",
+            ForecastedHours = 3,
+            AvailableBlockHours = 3,
+            GapHours = 0
+        },
+        new()
+        {
+            Specialty = "Plastic Surgery",
+            ForecastedHours = 3,
+            AvailableBlockHours = 2,
+            GapHours = 1
+        }
+    };
+
+        return new ForecastSummaryDto
+        {
+            PredictedCasesNextWeek = predictedCases,
+            PredictedOrHoursNextWeek = predictedHours,
+            AvailableBlockHoursNextWeek = availableHours,
+            CapacityGapHours = Math.Round(predictedHours - availableHours, 2),
+
+            SurgeryTypeForecasts = surgeryTypeForecasts
+                .OrderByDescending(item => item.ForecastedHoursNextWeek)
+                .ThenBy(item => item.SurgeryType)
+                .ToList(),
+
+            WeeklyDemandTrend = weeklyDemandTrend,
+
+            SpecialtyCapacityGaps = specialtyCapacityGaps
+                .OrderByDescending(item => item.GapHours)
+                .ThenBy(item => item.Specialty)
+                .ToList()
+        };
+    }
+
+    private static DateTime StartOfWeek(DateTime date)
+    {
+        var diff = (7 + (date.DayOfWeek - DayOfWeek.Monday)) % 7;
+
+        return date.AddDays(-diff).Date;
+    }
 }

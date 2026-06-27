@@ -477,7 +477,6 @@ onMounted(loadPage)
                 <td>{{ item.surgeonName }}</td>
                 <td>
                   <div>{{ item.patientName }}</div>
-                  <small>{{ item.patientMrn }}</small>
                 </td>
                 <td>{{ item.surgeryType }}</td>
                 <td>{{ item.priority }}</td>

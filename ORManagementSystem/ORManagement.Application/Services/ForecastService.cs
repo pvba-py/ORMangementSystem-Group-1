@@ -155,4 +155,25 @@ public class ForecastService : IForecastService
 
         return ServiceResultDto.Ok($"Forecast recommendation updated to {status}.");
     }
+
+    public async Task<ServiceResultDto<List<SurgeryDurationDto>>> GetSurgeryDurationAveragesAsync(
+    int hospitalId)
+    {
+        var averages = await _forecastRepository.GetSurgeryDurationAveragesAsync(
+            hospitalId);
+
+        return ServiceResultDto<List<SurgeryDurationDto>>.Ok(averages);
+    }
+    public async Task<ServiceResultDto<ForecastSummaryDto>> GetForecastSummaryAsync(
+        int hospitalId)
+    {
+        var summary = await _forecastRepository.GetForecastSummaryAsync(hospitalId);
+
+        return ServiceResultDto<ForecastSummaryDto>.Ok(summary);
+    }
+    private static DateTime StartOfWeek(DateTime date)
+    {
+        var diff = (7 + (date.DayOfWeek - DayOfWeek.Monday)) % 7;
+        return date.AddDays(-diff).Date;
+    }
 }

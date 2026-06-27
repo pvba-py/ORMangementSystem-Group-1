@@ -15,10 +15,11 @@ public interface IForecastRepository
     Task<List<ForecastDemandSignalDto>> GetDemandSignalsAsync(int hospitalId);
 
     Task<int> CreateRecommendationAsync(CreateForecastRecommendationDto request);
-
+    Task<List<SurgeryDurationDto>> GetSurgeryDurationAveragesAsync(int hospitalId);
     Task<bool> UpdateRecommendationStatusAsync(
         int hospitalId,
         int recId,
         string status,
         int reviewedByUserId);
+    Task<ForecastSummaryDto> GetForecastSummaryAsync(int hospitalId);
 }

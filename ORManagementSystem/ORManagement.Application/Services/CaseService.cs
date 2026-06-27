@@ -371,7 +371,12 @@ public class CaseService : ICaseService
         {
             return transitionValidation;
         }
-
+        if (status == "Completed" && request.ActualEnd is null)
+        {
+            return ServiceResultDto.Fail(
+                "ACTUAL_END_REQUIRED",
+                "Actual end time is required when completing a case.");
+        }
         var updated = await _caseRepository.UpdateCaseStatusAsync(
             hospitalId,
             surgeryId,

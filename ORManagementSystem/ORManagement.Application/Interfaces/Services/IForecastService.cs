@@ -26,4 +26,8 @@ public interface IForecastService
         UpdateForecastRecommendationStatusDto request,
         string? ipAddress,
         string? userAgent);
+
+    Task<ServiceResultDto<List<SurgeryDurationDto>>> GetSurgeryDurationAveragesAsync(
+    int hospitalId);
+    Task<ServiceResultDto<ForecastSummaryDto>> GetForecastSummaryAsync(int hospitalId);
 }

@@ -18,8 +18,6 @@ public partial class ORManagementDbContext : DbContext
 
     public virtual DbSet<BlockException> BlockExceptions { get; set; }
 
-    public virtual DbSet<DatabasePhiAuditLog> DatabasePhiAuditLogs { get; set; }
-
     public virtual DbSet<ForecastRecommendation> ForecastRecommendations { get; set; }
 
     public virtual DbSet<ORRoomUtilizationRecord> ORRoomUtilizationRecords { get; set; }
@@ -203,23 +201,7 @@ public partial class ORManagementDbContext : DbContext
                 .HasConstraintName("FK_BlockExceptions_Templates");
         });
 
-        modelBuilder.Entity<DatabasePhiAuditLog>(entity =>
-        {
-            entity.HasKey(e => e.DbAuditId);
-
-            entity.ToTable("DatabasePhiAuditLogs", "audit");
-
-            entity.Property(e => e.ActionId).HasMaxLength(10);
-            entity.Property(e => e.ActionName).HasMaxLength(100);
-            entity.Property(e => e.ApplicationName).HasMaxLength(256);
-            entity.Property(e => e.ClientIp).HasMaxLength(100);
-            entity.Property(e => e.DatabaseName).HasMaxLength(256);
-            entity.Property(e => e.DatabasePrincipalName).HasMaxLength(256);
-            entity.Property(e => e.ImportedAt).HasDefaultValueSql("(sysutcdatetime())");
-            entity.Property(e => e.ObjectName).HasMaxLength(256);
-            entity.Property(e => e.SchemaName).HasMaxLength(256);
-            entity.Property(e => e.ServerPrincipalName).HasMaxLength(256);
-        });
+       
 
         modelBuilder.Entity<ForecastRecommendation>(entity =>
         {

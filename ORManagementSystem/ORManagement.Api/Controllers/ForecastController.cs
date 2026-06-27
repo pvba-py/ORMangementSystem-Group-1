@@ -1,6 +1,5 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using ORManagement.Application.DTOs.Forecast;
 using ORManagement.Application.Interfaces.Services;
 
 namespace ORManagement.Api.Controllers;
@@ -20,25 +19,10 @@ public class ForecastController : ApiControllerBase
         _logger = logger;
     }
 
-    [HttpGet("recommendations")]
-    public async Task<IActionResult> GetRecommendations([FromQuery] string? status)
+    [HttpGet("summary")]
+    public async Task<IActionResult> GetForecastSummary()
     {
-        var result = await _forecastService.GetRecommendationsAsync(
-            GetCurrentHospitalIdOrDefault(),
-            status);
-
-        if (!result.Success)
-        {
-            return MapError(result);
-        }
-
-        return Ok(result.Data);
-    }
-
-    [HttpGet("demand")]
-    public async Task<IActionResult> GetDemand()
-    {
-        var result = await _forecastService.GetDemandAsync(
+        var result = await _forecastService.GetForecastSummaryAsync(
             GetCurrentHospitalIdOrDefault());
 
         if (!result.Success)
@@ -47,89 +31,5 @@ public class ForecastController : ApiControllerBase
         }
 
         return Ok(result.Data);
-    }
-
-    [HttpPost("generate")]
-    public async Task<IActionResult> GenerateRecommendations()
-    {
-        var userId = GetCurrentUserId();
-
-        if (userId is null)
-        {
-            return Unauthorized(new
-            {
-                success = false,
-                errorCode = "INVALID_TOKEN",
-                message = "Invalid token."
-            });
-        }
-
-        var result = await _forecastService.GenerateRecommendationsAsync(
-            GetCurrentHospitalIdOrDefault(),
-            userId.Value,
-            GetCurrentRoleName(),
-            GetIpAddress(),
-            GetUserAgent());
-
-        if (!result.Success)
-        {
-            return MapError(result);
-        }
-
-        return Ok(new
-        {
-            success = true,
-            message = result.Message,
-            generatedCount = result.Data
-        });
-    }
-
-    [HttpPut("recommendations/{id:int}/status")]
-    public async Task<IActionResult> UpdateRecommendationStatus(
-        int id,
-        [FromBody] UpdateForecastRecommendationStatusDto request)
-    {
-        if (!ModelState.IsValid)
-        {
-            return BadRequest(new
-            {
-                success = false,
-                errorCode = "VALIDATION_ERROR",
-                message = "Invalid forecast status update request.",
-                errors = ModelState
-            });
-        }
-
-        var userId = GetCurrentUserId();
-
-        if (userId is null)
-        {
-            return Unauthorized(new
-            {
-                success = false,
-                errorCode = "INVALID_TOKEN",
-                message = "Invalid token."
-            });
-        }
-
-        var result = await _forecastService.UpdateRecommendationStatusAsync(
-            GetCurrentHospitalIdOrDefault(),
-            id,
-            userId.Value,
-            GetCurrentRoleName(),
-            request,
-            GetIpAddress(),
-            GetUserAgent());
-
-        if (!result.Success)
-        {
-            return MapError(result);
-        }
-
-        return Ok(new
-        {
-            success = true,
-            message = result.Message
-        });
     }
 }

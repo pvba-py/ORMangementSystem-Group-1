@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using ORManagement.Application.DTOs.Waitlist;
 using ORManagement.Application.Interfaces.Repositories;
 using ORManagement.Infrastructure.Data;
+using ORManagement.Infrastructure.Data.Entities;
 
 namespace ORManagement.Infrastructure.Repositories;
 
@@ -220,11 +221,11 @@ public class WaitlistRepository : IWaitlistRepository
     }
 
     public async Task<bool> AssignWaitlistAsync(
-        int hospitalId,
-        int waitlistId,
-        int slotId,
-        decimal? matchScore,
-        int modifiedByUserId)
+    int hospitalId,
+    int waitlistId,
+    int slotId,
+    decimal? matchScore,
+    int modifiedByUserId)
     {
         var waitlist = await _dbContext.WaitlistRequests
             .FirstOrDefaultAsync(waitlist => waitlist.WaitlistId == waitlistId);
@@ -244,6 +245,16 @@ public class WaitlistRepository : IWaitlistRepository
             return false;
         }
 
+        if (request.RequestStatus != "Waitlisted")
+        {
+            return false;
+        }
+
+        if (request.PatientReadiness != "Ready")
+        {
+            return false;
+        }
+
         var slot = await _dbContext.ReleasedSlots
             .FirstOrDefaultAsync(slot =>
                 slot.SlotId == slotId &&
@@ -254,6 +265,92 @@ public class WaitlistRepository : IWaitlistRepository
             return false;
         }
 
+        if (slot.SlotState != "Available" && slot.SlotState != "Matched")
+        {
+            return false;
+        }
+
+        var slotDate = slot.SlotDate.ToDateTime(TimeOnly.MinValue);
+        var scheduledStart = slotDate.Add(slot.StartTime.ToTimeSpan());
+        var scheduledEnd = scheduledStart.AddMinutes(request.EstimatedDurationMin);
+        var slotEnd = slotDate.Add(slot.EndTime.ToTimeSpan());
+
+        if (scheduledEnd > slotEnd)
+        {
+            return false;
+        }
+
+        var block = await _dbContext.BlockAllocations
+            .FirstOrDefaultAsync(block =>
+                block.HospitalId == hospitalId &&
+                block.BlockId == slot.BlockId &&
+                block.BlockStatus != "Cancelled");
+
+        if (block is null)
+        {
+            return false;
+        }
+        var blockTypeCompatible =
+    block.BlockType != "Emergency" ||
+    request.Priority == "Emergency";
+
+        if (!blockTypeCompatible)
+        {
+            return false;
+        }
+        var caseConflictExists = await _dbContext.SurgicalCases
+            .AnyAsync(surgicalCase =>
+                surgicalCase.HospitalId == hospitalId &&
+                surgicalCase.BlockId == slot.BlockId &&
+                surgicalCase.CaseStatus != "Cancelled" &&
+                scheduledStart <
+                    (
+                        surgicalCase.CaseStatus == "Completed" &&
+                        surgicalCase.ActualEnd.HasValue
+                            ? surgicalCase.ActualEnd.Value
+                            : surgicalCase.ScheduledEnd
+                    ) &&
+                scheduledEnd > surgicalCase.ScheduledStart);
+
+        if (caseConflictExists)
+        {
+            return false;
+        }
+
+        var surgeonConflictExists = await _dbContext.SurgicalCases
+            .AnyAsync(surgicalCase =>
+                surgicalCase.HospitalId == hospitalId &&
+                surgicalCase.SurgeonId == request.SurgeonId &&
+                surgicalCase.CaseStatus != "Cancelled" &&
+                scheduledStart <
+                    (
+                        surgicalCase.CaseStatus == "Completed" &&
+                        surgicalCase.ActualEnd.HasValue
+                            ? surgicalCase.ActualEnd.Value
+                            : surgicalCase.ScheduledEnd
+                    ) &&
+                scheduledEnd > surgicalCase.ScheduledStart);
+
+        if (surgeonConflictExists)
+        {
+            return false;
+        }
+
+        var surgicalCaseEntity = new SurgicalCase
+        {
+            HospitalId = hospitalId,
+            RequestId = request.RequestId,
+            BlockId = slot.BlockId,
+            SurgeonId = request.SurgeonId,
+            ORRoomId = slot.ORRoomId,
+            ScheduledStart = scheduledStart,
+            ScheduledEnd = scheduledEnd,
+            CaseStatus = "Scheduled",
+            ModifiedByUserId = modifiedByUserId
+        };
+
+        await _dbContext.SurgicalCases.AddAsync(surgicalCaseEntity);
+
         waitlist.MatchedSlotId = slotId;
         waitlist.MatchScore = matchScore;
 
@@ -261,6 +358,11 @@ public class WaitlistRepository : IWaitlistRepository
         request.ModifiedByUserId = modifiedByUserId;
 
         slot.SlotState = "Assigned";
+
+        block.BlockStatus = "PartiallyBooked";
+        block.ModifiedByUserId = modifiedByUserId;
+
+        _dbContext.WaitlistRequests.Remove(waitlist);
 
         await _dbContext.SaveChangesAsync();
 

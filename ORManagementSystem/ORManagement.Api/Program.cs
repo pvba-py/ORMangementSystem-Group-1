@@ -1,13 +1,14 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using ORManagement.Infrastructure.AI;
 using ORManagement.Api.Middleware;
 using ORManagement.Application.DTOs.Requests;
 using ORManagement.Application.Engines;
 using ORManagement.Application.Interfaces.Repositories;
 using ORManagement.Application.Interfaces.Services;
 using ORManagement.Application.Services;
+using ORManagement.Infrastructure.AI;
 using ORManagement.Infrastructure.Data;
 using ORManagement.Infrastructure.Repositories;
 using System.Text;
@@ -26,6 +27,26 @@ builder.Services.AddCors(options =>
             .AllowCredentials() // REQUIRED for cookies
             .WithExposedHeaders("X-Data-Source");
     });
+});
+
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+    options.InvalidModelStateResponseFactory = context =>
+    {
+        var errors = context.ModelState
+            .Where(item => item.Value?.Errors.Count > 0)
+            .SelectMany(item => item.Value!.Errors)
+            .Select(error => error.ErrorMessage)
+            .ToList();
+
+        return new BadRequestObjectResult(new
+        {
+            success = false,
+            errorCode = "VALIDATION_ERROR",
+            message = errors.FirstOrDefault() ?? "Invalid request.",
+            errors
+        });
+    };
 });
 
 //Register Controllers

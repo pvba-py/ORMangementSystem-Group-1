@@ -26,6 +26,15 @@ public class CasesController : ApiControllerBase
     {
         var userId = GetCurrentUserId();
 
+        if (userId is null)
+        {
+            return Unauthorized(new
+            {
+                success = false,
+                errorCode = "INVALID_TOKEN",
+                errorMessage = "Noy Authorized."
+            });
+        }
 
         var result = await _caseService.GetCasesAsync(
             GetCurrentHospitalIdOrDefault(),

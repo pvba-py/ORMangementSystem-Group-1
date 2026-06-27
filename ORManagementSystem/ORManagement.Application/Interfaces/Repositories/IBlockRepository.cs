@@ -82,7 +82,17 @@ public interface IBlockRepository
     TimeOnly endTime,
     string blockType,
     int? excludeTemplateId = null);
+    Task<bool> ReleaseWindowHasCasesAsync(
+    int hospitalId,
+    int blockId,
+    TimeOnly releaseStartTime,
+    TimeOnly releaseEndTime);
 
+    Task<bool> ReleaseSlotConflictExistsAsync(
+        int hospitalId,
+        int blockId,
+        TimeOnly releaseStartTime,
+        TimeOnly releaseEndTime);
     Task<bool> DeleteTemplateAsync(
         int hospitalId,
         int templateId);

@@ -32,11 +32,11 @@ public class CaseRepository : ICaseRepository
     }
 
     public async Task<bool> SurgeonCaseConflictExistsAsync(
-    int hospitalId,
-    int surgeonId,
-    DateTime scheduledStart,
-    DateTime scheduledEnd,
-    int? excludeSurgeryId = null)
+     int hospitalId,
+     int surgeonId,
+     DateTime scheduledStart,
+     DateTime scheduledEnd,
+     int? excludeSurgeryId = null)
     {
         var query =
             from surgicalCase in _dbContext.SurgicalCases
@@ -45,8 +45,14 @@ public class CaseRepository : ICaseRepository
             where surgicalCase.HospitalId == hospitalId
                   && orRequest.SurgeonId == surgeonId
                   && surgicalCase.CaseStatus != "Cancelled"
-                  && surgicalCase.ScheduledStart < scheduledEnd
-                  && surgicalCase.ScheduledEnd > scheduledStart
+                  && scheduledStart <
+                        (
+                            surgicalCase.CaseStatus == "Completed" &&
+                            surgicalCase.ActualEnd.HasValue
+                                ? surgicalCase.ActualEnd.Value
+                                : surgicalCase.ScheduledEnd
+                        )
+                  && scheduledEnd > surgicalCase.ScheduledStart
             select surgicalCase;
 
         if (excludeSurgeryId.HasValue)
@@ -179,23 +185,30 @@ public class CaseRepository : ICaseRepository
     }
 
     public async Task<bool> HasCaseConflictAsync(
-        int hospitalId,
-        int blockId,
-        DateTime scheduledStart,
-        DateTime scheduledEnd,
-        int? excludeSurgeryId = null)
+     int hospitalId,
+     int blockId,
+     DateTime scheduledStart,
+     DateTime scheduledEnd,
+     int? excludeSurgeryId = null)
     {
         var query = _dbContext.SurgicalCases
             .Where(surgicalCase =>
                 surgicalCase.HospitalId == hospitalId &&
                 surgicalCase.BlockId == blockId &&
                 surgicalCase.CaseStatus != "Cancelled" &&
-                scheduledStart < surgicalCase.ScheduledEnd &&
+                scheduledStart <
+                    (
+                        surgicalCase.CaseStatus == "Completed" &&
+                        surgicalCase.ActualEnd.HasValue
+                            ? surgicalCase.ActualEnd.Value
+                            : surgicalCase.ScheduledEnd
+                    ) &&
                 scheduledEnd > surgicalCase.ScheduledStart);
 
         if (excludeSurgeryId.HasValue)
         {
-            query = query.Where(surgicalCase => surgicalCase.SurgeryId != excludeSurgeryId.Value);
+            query = query.Where(surgicalCase =>
+                surgicalCase.SurgeryId != excludeSurgeryId.Value);
         }
 
         return await query.AnyAsync();
@@ -309,6 +322,53 @@ public class CaseRepository : ICaseRepository
         if (status == "Completed")
         {
             entity.ActualEnd = actualEnd ?? DateTime.UtcNow;
+
+            if (entity.ActualEnd.Value < entity.ScheduledEnd)
+            {
+                var releaseStartTime = TimeOnly.FromDateTime(entity.ActualEnd.Value);
+                var releaseEndTime = TimeOnly.FromDateTime(entity.ScheduledEnd);
+
+                if (releaseEndTime > releaseStartTime)
+                {
+                    var existingReleasedSlot = await _dbContext.ReleasedSlots
+                        .AnyAsync(slot =>
+                            slot.HospitalId == hospitalId &&
+                            slot.BlockId == entity.BlockId &&
+                            slot.SlotState != "Cancelled" &&
+                            releaseStartTime < slot.EndTime &&
+                            releaseEndTime > slot.StartTime);
+
+                    if (!existingReleasedSlot)
+                    {
+                        var releasedSlot = new ReleasedSlot
+                        {
+                            HospitalId = entity.HospitalId,
+                            BlockId = entity.BlockId,
+                            ORRoomId = entity.ORRoomId,
+                            SlotDate = DateOnly.FromDateTime(entity.ScheduledStart.Date),
+                            StartTime = releaseStartTime,
+                            EndTime = releaseEndTime,
+                            Source = "BlockRelease",
+                            ReleasedByUserId = modifiedByUserId,
+                            SlotState = "Available",
+                            CreatedAt = DateTime.UtcNow
+                        };
+
+                        await _dbContext.ReleasedSlots.AddAsync(releasedSlot);
+
+                        var block = await _dbContext.BlockAllocations
+                            .FirstOrDefaultAsync(block =>
+                                block.HospitalId == hospitalId &&
+                                block.BlockId == entity.BlockId);
+
+                        if (block is not null && block.BlockStatus == "FullyBooked")
+                        {
+                            block.BlockStatus = "PartiallyBooked";
+                            block.ModifiedByUserId = modifiedByUserId;
+                        }
+                    }
+                }
+            }
         }
 
         if (status == "Cancelled")

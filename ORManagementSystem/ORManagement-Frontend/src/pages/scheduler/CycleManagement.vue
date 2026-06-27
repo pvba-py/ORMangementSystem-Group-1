@@ -92,7 +92,7 @@ const overlapsHourInclusive = (startMinutes, endMinutes, hour) => {
   const slotStart = hour * 60
   const slotEnd = (hour + 1) * 60
 
-  return startMinutes <= slotEnd && endMinutes >= slotStart
+  return startMinutes < slotEnd && endMinutes > slotStart
 }
 
 const selectedCycleStatus = computed(() => {

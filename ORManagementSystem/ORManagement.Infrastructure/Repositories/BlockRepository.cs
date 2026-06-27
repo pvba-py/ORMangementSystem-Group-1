@@ -691,6 +691,49 @@ public class BlockRepository : IBlockRepository
 
         return await query.AnyAsync();
     }
+    public async Task<bool> ReleaseWindowHasCasesAsync(
+    int hospitalId,
+    int blockId,
+    TimeOnly releaseStartTime,
+    TimeOnly releaseEndTime)
+    {
+        var block = await _dbContext.BlockAllocations
+            .FirstOrDefaultAsync(item =>
+                item.HospitalId == hospitalId &&
+                item.BlockId == blockId);
+
+        if (block is null)
+        {
+            return false;
+        }
+
+        var blockDate = block.BlockDate.ToDateTime(TimeOnly.MinValue);
+
+        var releaseStart = blockDate.Add(releaseStartTime.ToTimeSpan());
+        var releaseEnd = blockDate.Add(releaseEndTime.ToTimeSpan());
+
+        return await _dbContext.SurgicalCases
+            .AnyAsync(surgicalCase =>
+                surgicalCase.HospitalId == hospitalId &&
+                surgicalCase.BlockId == blockId &&
+                surgicalCase.CaseStatus != "Cancelled" &&
+                releaseStart < surgicalCase.ScheduledEnd &&
+                releaseEnd > surgicalCase.ScheduledStart);
+    }
+    public async Task<bool> ReleaseSlotConflictExistsAsync(
+    int hospitalId,
+    int blockId,
+    TimeOnly releaseStartTime,
+    TimeOnly releaseEndTime)
+    {
+        return await _dbContext.ReleasedSlots
+            .AnyAsync(slot =>
+                slot.HospitalId == hospitalId &&
+                slot.BlockId == blockId &&
+                slot.SlotState != "Cancelled" &&
+                releaseStartTime < slot.EndTime &&
+                releaseEndTime > slot.StartTime);
+    }
     public async Task<int?> GetFirstActiveRoomIdAsync(int hospitalId)
     {
         return await _dbContext.OperatingRooms
